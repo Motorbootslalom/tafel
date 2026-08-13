@@ -7,6 +7,8 @@ Die Tafel steht 50 m entfernt mitten im See: schwarzer Grund, helle Schrift,
 sehr große Startnummer. Und sie wird **nie neu geladen** – der weiße Blitz beim
 Umschalten, der die alte Lösung geplagt hat, kann gar nicht mehr entstehen.
 
+**Zum Ausprobieren:** <https://motorbootslalom.github.io/tafel/>
+
 > Fachliche Anforderungen: [LASTENHEFT.md](LASTENHEFT.md)
 
 ## Was es kann
@@ -53,15 +55,20 @@ Umschalten, der die alte Lösung geplagt hat, kann gar nicht mehr entstehen.
 
 ### Ohne alles: eine Datei
 
+Fertig zum Herunterladen:
+**<https://motorbootslalom.github.io/tafel/tafel.html>** (Rechtsklick →
+„Ziel speichern unter …“).
+
+Das ist die ganze Anwendung in **einer** Datei. Auf einen USB-Stick kopieren, auf
+dem Zielrechner doppelklicken – fertig. Kein Node, kein Python, kein Installer,
+keine Adminrechte, kein Internet. Alles liegt im localStorage des Browsers.
+
+Selbst bauen geht auch:
+
 ```
 npm install
-npm run build:single
+npm run build:single      # ergibt dist-single/index.html
 ```
-
-Ergebnis ist **eine** Datei: `dist-single/index.html`. Auf einen USB-Stick
-kopieren, auf dem Zielrechner doppelklicken – fertig. Kein Node, kein Python,
-kein Installer, keine Adminrechte, kein Internet. Alles liegt im localStorage
-des Browsers.
 
 Üblicher Betrieb sind zwei Fenster:
 
@@ -72,6 +79,19 @@ des Browsers.
 2. **Verwaltung/Steg** – auf dem Bedienrechner.
 
 ### Als Webseite
+
+Die jeweils aktuelle Fassung liegt auf GitHub Pages:
+
+| Adresse | Was |
+| --- | --- |
+| <https://motorbootslalom.github.io/tafel/> | die Anwendung |
+| <https://motorbootslalom.github.io/tafel/tafel.html> | dieselbe Anwendung als einzelne Datei zum Herunterladen |
+
+Beides entsteht bei jedem Push auf `main`
+([deploy.yml](.github/workflows/deploy.yml)). Für den Wettkampf ist die
+heruntergeladene Datei die sichere Wahl – sie braucht kein Netz.
+
+Selbst starten:
 
 ```
 npm run dev       # Entwicklung
