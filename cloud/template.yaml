@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Tafel-Relais in AWS: API-Gateway-WebSocket, eine Lambda-Funktion und eine
+  DynamoDB-Tabelle. Leitet nur weiter – Starterlisten und Rechte kennt
+  ausschließlich der Host (der Rechner an der Tafel).
+
+Parameters:
+  HostKey:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: >
+      Schlüssel, mit dem sich der Bedienrechner als Host anmeldet. In der
+      Verwaltung unter „Verbindung“ eintragen.
+
+  StageName:
+    Type: String
+    Default: prod
+    Description: Name der Stufe in der URL.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 10
+    MemorySize: 256
+    Architectures: [arm64]
+
+Resources:
+  # --- Datenhaltung --------------------------------------------------------
+  # Ein Eintrag je offener Verbindung, dazu der zuletzt verteilte Gesamtzustand.
+  # Beides verfällt über die TTL von selbst – nach der Veranstaltung bleibt
+  # nichts liegen und die Tabelle bleibt im kostenlosen Kontingent.
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: connectionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        # Beim Trennen kennt API Gateway nur die Verbindungs-ID, nicht den Raum.
+        - IndexName: byConnection
+          KeySchema:
+            - AttributeName: connectionId
+              KeyType: HASH
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [room, deviceId, isHost, approved]
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  # --- WebSocket-Schnittstelle ---------------------------------------------
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${AWS::StackName}-tafel'
+      ProtocolType: WEBSOCKET
+      # Alle Nachrichten laufen über $default; die Verteilung entscheidet die
+      # Funktion anhand des Nachrichteninhalts.
+      RouteSelectionExpression: $request.body.action
+
+  RelayFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          HOST_KEY: !Ref HostKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  RelayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RelayFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RelayFunction.Arn}/invocations'
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      Target: !Sub 'integrations/${Integration}'
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      Target: !Sub 'integrations/${Integration}'
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      Target: !Sub 'integrations/${Integration}'
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn: [ConnectRoute, DisconnectRoute, DefaultRoute]
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: !Ref StageName
+      AutoDeploy: true
+
+Outputs:
+  RelayUrl:
+    Description: >
+      In der Verwaltung unter „Verbindung“ als Adresse des Relais eintragen.
+    Value: !Sub 'wss://${WebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}'
+
+  TableName:
+    Value: !Ref Table

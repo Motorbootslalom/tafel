@@ -1,0 +1,102 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useStore } from '../state/store'
+import BoardRegion from '../components/BoardRegion.vue'
+
+/**
+ * Das Vollbild-Fenster auf dem Monitor der Wettkampftafel.
+ *
+ * Der springende Punkt gegenüber der alten Word-Lösung: Hier wird nie eine Seite
+ * neu geladen. Der Zustand kommt über den Store herein, Vue tauscht nur die
+ * betroffenen Textknoten aus und blendet sie weich um – es gibt keinen weißen
+ * Blitz, weil der schwarze Hintergrund nie verschwindet.
+ */
+const store = useStore()
+
+const regions = computed(() => store.state.parcoursList.length)
+const hasHeader = computed(
+  () => !!store.state.board.kopfzeile.trim() || !!store.state.board.logoDataUrl,
+)
+
+/** Kopfzeile bekommt einen festen Anteil der Höhe; ohne sie bleibt alles Starter. */
+const headerHeight = computed(() => (hasHeader.value ? (regions.value > 1 ? '11vh' : '15vh') : '0px'))
+
+const cssVars = computed(() => ({
+  '--regions': String(regions.value),
+  '--header-h': headerHeight.value,
+  '--scale': String(store.state.board.scale || 1),
+}))
+
+// Sekundentakt: nur damit ablaufende Meldungen von selbst verschwinden.
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | null = null
+
+// Maus nach kurzer Ruhe ausblenden – auf der Tafel hat kein Zeiger etwas verloren.
+const cursorHidden = ref(true)
+let cursorTimer: ReturnType<typeof setTimeout> | null = null
+
+function onPointerMove(): void {
+  cursorHidden.value = false
+  if (cursorTimer) clearTimeout(cursorTimer)
+  cursorTimer = setTimeout(() => (cursorHidden.value = true), 2500)
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await document.documentElement.requestFullscreen()
+  } catch {
+    // Browser verweigert Vollbild ohne Nutzergeste – dann eben per Taste F11.
+  }
+}
+
+function onKey(ev: KeyboardEvent): void {
+  if (ev.key === 'f' || ev.key === 'F') void toggleFullscreen()
+}
+
+onMounted(() => {
+  ticker = setInterval(() => (now.value = Date.now()), 1000)
+  window.addEventListener('mousemove', onPointerMove)
+  window.addEventListener('keydown', onKey)
+  document.body.style.background = '#000'
+})
+
+onUnmounted(() => {
+  if (ticker) clearInterval(ticker)
+  if (cursorTimer) clearTimeout(cursorTimer)
+  window.removeEventListener('mousemove', onPointerMove)
+  window.removeEventListener('keydown', onKey)
+  document.body.style.background = ''
+})
+
+const runtimeOf = (parcoursId: string) =>
+  store.state.runtimes.find((rt) => rt.parcoursId === parcoursId)
+</script>
+
+<template>
+  <div
+    class="board"
+    :class="{ 'cursor-hidden': cursorHidden }"
+    :style="cssVars"
+    @dblclick="toggleFullscreen"
+  >
+    <header v-if="hasHeader" class="board-header">
+      <img v-if="store.state.board.logoDataUrl" :src="store.state.board.logoDataUrl" alt="" />
+      <div v-fit class="title board-line">{{ store.state.board.kopfzeile }}</div>
+      <img v-if="store.state.board.logoDataUrl" :src="store.state.board.logoDataUrl" alt="" />
+    </header>
+
+    <template v-for="(parcours, index) in store.state.parcoursList" :key="parcours.id">
+      <div v-if="index > 0" class="board-separator"></div>
+      <BoardRegion
+        v-if="runtimeOf(parcours.id)"
+        :parcours="parcours"
+        :runtime="runtimeOf(parcours.id)!"
+        :board="store.state.board"
+        :starter-by-id="store.starterById"
+        :show-parcours-name="store.state.board.showParcoursName"
+        :now="now"
+      />
+    </template>
+  </div>
+</template>

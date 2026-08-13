@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-single/
+*.tsbuildinfo
+.DS_Store
+server/build/
+# `go build` im Ordner server/ legt das Binary unter dem Ordnernamen ab
+server/server
+server/tafel-relais
+cloud/.aws-sam/
+
+
+alte Version/
+BSP-Tafel/
+# Die eingebettete Weboberfläche entsteht beim Bauen (server/Makefile)
+server/web/*
+!server/web/.gitkeep

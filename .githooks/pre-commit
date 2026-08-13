@@ -1,0 +1,15 @@
+#!/bin/sh
+# Vor jedem Commit: TypeScript-Typecheck + Vitest-Tests.
+# Aktivierung (einmalig): git config core.hooksPath .githooks
+# Bei rotem Test bricht der Commit ab. Umgehen im Notfall: git commit --no-verify
+
+echo "▶ pre-commit: vue-tsc -b && vitest run"
+npm run check
+status=$?
+if [ $status -ne 0 ]; then
+  echo "✖ Tests/Typecheck fehlgeschlagen – Commit abgebrochen."
+  echo "  (Im Notfall umgehbar mit: git commit --no-verify)"
+  exit 1
+fi
+echo "✔ Alle Tests grün."
+exit 0

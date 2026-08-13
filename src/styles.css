@@ -1,0 +1,637 @@
+/*
+ * Zwei sehr verschiedene Oberflächen in einer Anwendung:
+ *
+ * 1. Die **Tafel** – schwarzer Grund, helle Schrift, 50 m Leseabstand. Sie
+ *    bringt ihre Farben selbst mit und ignoriert die Systemeinstellung.
+ * 2. **Admin, Steg und Startliste** – normale Bedienoberflächen, die hell oder
+ *    dunkel nach Systemeinstellung laufen.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: #d3d9e0;
+  --text: #14181d;
+  --text-dim: #5b6572;
+  --accent: #0b6bcb;
+  --accent-text: #ffffff;
+  --danger: #c02a2a;
+  --warn: #a86400;
+  --ok: #16794a;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --surface: #1c2027;
+    --surface-2: #252b34;
+    --border: #363d47;
+    --text: #e8ecf1;
+    --text-dim: #9aa5b3;
+    --accent: #4c9aff;
+    --accent-text: #06121f;
+    --danger: #ff7b72;
+    --warn: #e0a33a;
+    --ok: #4ec98a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.4em;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  margin: 0 0 0.8em;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --- Bedienoberfläche ---------------------------------------------------- */
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.card > h2:first-child,
+.card > h3:first-child {
+  margin-top: 0;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.row-tight {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.spread {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.stack > * + * {
+  margin-top: 0.6rem;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.mono {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 0.3rem 0 0;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+button,
+.button {
+  font: inherit;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled),
+.button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+button.big {
+  padding: 0.9rem 1.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  max-width: 100%;
+}
+
+textarea {
+  width: 100%;
+  min-height: 8rem;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+label.field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+label.field > input,
+label.field > select {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0d1117;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem 0.8rem;
+  color: var(--text-dim);
+}
+
+.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex: none;
+}
+
+.status-dot.connected {
+  background: var(--ok);
+}
+.status-dot.reconnecting {
+  background: var(--warn);
+}
+.status-dot.error {
+  background: var(--danger);
+}
+
+/* --- Tafel --------------------------------------------------------------- */
+
+.board {
+  --regions: 1;
+  --header-h: 0px;
+  --scale: 1;
+  /* Höhe, die einem Parcours zur Verfügung steht – Grundmaß aller Schriften. */
+  --region-h: calc((100vh - var(--header-h)) / var(--regions));
+  --u: calc(var(--region-h) * var(--scale));
+
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Arial Black', 'Arial Bold', Arial, system-ui, sans-serif;
+}
+
+.board.cursor-hidden {
+  cursor: none;
+}
+
+.board-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.03);
+  padding: 0 calc(var(--u) * 0.04);
+  flex: none;
+  overflow: hidden;
+}
+
+.board-header img {
+  height: 82%;
+  width: auto;
+  object-fit: contain;
+}
+
+.board-header .title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: calc(var(--header-h) * 0.5);
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.board-region {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Etwas Luft nach oben und unten, damit nichts an der Trennlinie oder am
+     Bildschirmrand klebt. */
+  padding: calc(var(--u) * 0.02) calc(var(--u) * 0.035);
+  /* Nichts darf in den Nachbar-Parcours ragen. */
+  overflow: hidden;
+}
+
+.board-separator {
+  flex: none;
+  height: 4px;
+  background: #00ff66;
+}
+
+/*
+ * Der Inhalt eines Bereichs hat seine natürliche Höhe – nur so lässt sich
+ * messen, ob er hineinpasst. Passt er nicht, senkt `--block-scale` das
+ * Grundmaß `--u` für diesen Bereich, und alles verkleinert sich gemeinsam.
+ */
+.region-content {
+  --block-scale: 1;
+  --u: calc(var(--region-h) * var(--scale) * var(--block-scale));
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* Nicht vom Flexbox stauchen lassen: Sonst wäre die gemessene Höhe immer
+     genau die verfügbare, und ein Überlauf bliebe unentdeckt. */
+  flex: none;
+}
+
+/* Textzeilen skalieren über --fit-scale herunter, wenn sie zu lang werden. */
+.board-line {
+  --fit-scale: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  /* Etwas Luft: Arial Black hat kräftige Ober- und Unterlängen, die sich bei
+     zu engem Zeilenabstand sonst berühren. */
+  line-height: 1.12;
+}
+
+/*
+ * Drei Spalten: Der Parcours-Name liegt links, Klasse und Lauf stehen mittig
+ * über der Startnummer. Die beiden 1fr-Spalten außen halten die Mitte in der
+ * Mitte, unabhängig davon, wie lang der Parcours-Name ist.
+ */
+.board-meta {
+  display: grid;
+  /*
+   * Die erste Spalte darf nie schmaler werden als der Parcours-Name – sonst
+   * liefe er unsichtbar über und schöbe sich über „Klasse". Wird die Zeile
+   * dadurch zu breit, greift die Breitenanpassung und verkleinert sie.
+   */
+  grid-template-columns: minmax(min-content, 1fr) auto 1fr;
+  align-items: baseline;
+  gap: calc(var(--u) * 0.04);
+  font-size: calc(var(--u) * 0.115 * var(--fit-scale));
+  font-weight: 900;
+  color: #ffd24d;
+  letter-spacing: 0.02em;
+}
+
+.board-meta .parcours {
+  justify-self: start;
+}
+
+.board-meta .middle {
+  justify-self: center;
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--u) * 0.06);
+}
+
+.board-meta .lauf {
+  color: #7fd7ff;
+}
+
+/*
+ * Startnummer links, Angaben zum Starter rechts daneben.
+ *
+ * Untereinander teilten sich beide die Höhe – die Nummer konnte höchstens knapp
+ * die Hälfte des Bereichs einnehmen, während links und rechts Platz frei blieb.
+ * Nebeneinander begrenzt nur noch die Bereichshöhe die Nummer, und die Breite
+ * wird für die Namen genutzt.
+ */
+.board-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 0.06);
+  min-width: 0;
+}
+
+.board-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  text-align: left;
+}
+
+.board-startnr {
+  flex: none;
+  text-align: right;
+  font-size: calc(var(--u) * 0.66 * var(--fit-scale));
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.board-name {
+  font-size: calc(var(--u) * 0.155 * var(--fit-scale));
+  font-weight: 900;
+}
+
+.board-origin {
+  font-size: calc(var(--u) * 0.105 * var(--fit-scale));
+  font-weight: 700;
+  color: #d6dee8;
+}
+
+.board-previous {
+  font-size: calc(var(--u) * 0.075 * var(--fit-scale));
+  font-weight: 700;
+  color: #8b96a5;
+  margin-top: calc(var(--u) * 0.015);
+}
+
+.board-message {
+  text-align: center;
+  font-weight: 900;
+  font-size: calc(var(--u) * 0.16 * var(--fit-scale));
+  padding: 0 calc(var(--u) * 0.03);
+  white-space: pre-wrap;
+  line-height: 1.15;
+}
+
+/*
+ * Eine Info-Meldung steht zusätzlich unter dem Starter. Sie richtet sich an
+ * alle im Umfeld und muss deshalb genauso gut lesbar sein wie der Name – also
+ * mindestens dessen Größe. Kleiner als eine Meldung, die den Starter ersetzt,
+ * bleibt sie trotzdem: Dort ist sie das einzige auf der Tafel.
+ *
+ * Wird der Bereich dadurch zu voll, verkleinert `--block-scale` alles
+ * gemeinsam; die Größenverhältnisse bleiben dabei erhalten.
+ */
+.board-message.below {
+  font-size: calc(var(--u) * 0.13 * var(--fit-scale));
+  color: #ffd24d;
+  margin-top: calc(var(--u) * 0.025);
+}
+
+.board-message.stoerung {
+  color: #ff6b6b;
+}
+.board-message.pause {
+  color: #ffd24d;
+}
+.board-message.info {
+  color: #fff;
+}
+
+.board-empty {
+  text-align: center;
+  font-size: calc(var(--u) * 0.1);
+  color: #6b7683;
+  font-weight: 700;
+}
+
+/*
+ * Weiches Erscheinen – als reine Verzierung.
+ *
+ * Bewusst eine CSS-Animation und keine Vue-Überblendung: Eine Überblendung
+ * müsste zwei Fassungen gleichzeitig zeigen (Doppelbilder), und ein
+ * `mode="out-in"` würde das Einblenden davon abhängig machen, dass die
+ * Ausblendung zu Ende läuft. Beides braucht Animationsframes. Bekommt das
+ * Fenster keine – verdeckt, minimiert, vom Browser gedrosselt –, bliebe die
+ * Tafel auf dem alten Starter stehen.
+ *
+ * Deshalb: Der Ruhezustand ist **sichtbar**, die Animation blendet nur von
+ * durchsichtig auf. Läuft sie gar nicht, steht der neue Starter trotzdem sofort
+ * im Bild.
+ */
+@keyframes tafel-erscheinen {
+  from {
+    opacity: 0;
+  }
+}
+
+.region-content {
+  animation: tafel-erscheinen 130ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .region-content {
+    animation: none;
+  }
+}
+
+/* --- Steg-Bedienung (große Flächen, oft mit Handschuhen bedient) --------- */
+
+.steg-current {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.steg-nr {
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.steg-actions {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.steg-actions button {
+  justify-content: center;
+  padding: 1rem 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* --- Pairing ------------------------------------------------------------- */
+
+.qr-box {
+  width: min(280px, 70vw);
+  aspect-ratio: 1;
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 0.5rem;
+}
+
+.qr-box svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.code-display {
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
