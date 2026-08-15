@@ -52,7 +52,7 @@ function runtime(options: { laufend?: boolean; message?: ParcoursRuntime['messag
   }
 }
 
-function render(rt: ParcoursRuntime, overrides: Partial<BoardConfig> = {}) {
+function render(rt: ParcoursRuntime, overrides: Partial<BoardConfig> = {}, stacked = false) {
   return mount(BoardRegion, {
     props: {
       parcours,
@@ -60,6 +60,7 @@ function render(rt: ParcoursRuntime, overrides: Partial<BoardConfig> = {}) {
       board: { ...board, ...overrides },
       starterById: (id: string) => [starter, davor].find((s) => s.id === id),
       showParcoursName: { ...board, ...overrides }.showParcoursName,
+      stacked,
       now: 5000,
     },
     global: { directives: { fit: {}, 'fit-block': {} } },
@@ -102,6 +103,18 @@ describe('BoardRegion – laufender Starter', () => {
     const text = render(runtime(), { originMode: 'bundesland' }).text()
     expect(text).toContain('Brandenburg')
     expect(text).not.toContain('MTC Brandenburg e.V.')
+  })
+})
+
+describe('BoardRegion – Anordnung', () => {
+  // Die Größenverhältnisse hängen an dieser Klasse: Ohne sie steht die
+  // Startnummer neben den Angaben und nimmt ihnen die Breite.
+  it('stellt Nummer und Angaben nebeneinander', () => {
+    expect(render(runtime()).find('.region-content').classes()).not.toContain('stacked')
+  })
+
+  it('stapelt sie im hohen Bereich untereinander', () => {
+    expect(render(runtime(), {}, true).find('.region-content').classes()).toContain('stacked')
   })
 })
 

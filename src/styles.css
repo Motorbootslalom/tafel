@@ -545,6 +545,46 @@ th {
   color: #fff;
 }
 
+/*
+ * Untereinander – für hohe Bereiche (in der Regel: ein einziger Parcours).
+ *
+ * Nebeneinander wäre die Nummer dort zwar riesig, sie ließe für Name und Verein
+ * aber nur einen schmalen Streifen übrig; die Breitenanpassung rechnete beide
+ * auf einen Bruchteil herunter. Untereinander steht die volle Breite für die
+ * Namen bereit. Die Nummer wird dafür kleiner – sie bleibt aber mit Abstand das
+ * Größte auf der Tafel, und in 50 m Entfernung ist der Name endlich mitlesbar.
+ *
+ * Die Anteile sind so gewählt, dass alle Zeilen zusammen (Klasse/Lauf,
+ * Startnummer, Name, Verein, Starter davor) in die Bereichshöhe passen, ohne
+ * dass `--block-scale` eingreifen muss.
+ */
+.region-content.stacked .board-main {
+  flex-direction: column;
+  gap: calc(var(--u) * 0.012);
+}
+
+.region-content.stacked .board-startnr {
+  font-size: calc(var(--u) * 0.42 * var(--fit-scale));
+  text-align: center;
+}
+
+.region-content.stacked .board-info {
+  width: 100%;
+  text-align: center;
+}
+
+.region-content.stacked .board-name {
+  font-size: calc(var(--u) * 0.13 * var(--fit-scale));
+}
+
+.region-content.stacked .board-origin {
+  font-size: calc(var(--u) * 0.09 * var(--fit-scale));
+}
+
+.region-content.stacked .board-previous {
+  font-size: calc(var(--u) * 0.062 * var(--fit-scale));
+}
+
 .board-empty {
   text-align: center;
   font-size: calc(var(--u) * 0.1);

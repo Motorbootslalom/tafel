@@ -10,6 +10,8 @@ const props = defineProps<{
   starterById: (id: string) => Starter | undefined
   /** Bei zwei Parcours steht der Name darüber, bei einem ist er überflüssig. */
   showParcoursName: boolean
+  /** Startnummer über den Angaben statt daneben – siehe `BoardView`. */
+  stacked: boolean
   now: number
 }>()
 
@@ -74,7 +76,7 @@ const swapKey = computed(() =>
       Der Wechsel ist deshalb hart; das weiche Erscheinen macht eine reine
       CSS-Animation. Läuft die nicht, ist der Inhalt trotzdem sofort da.
     -->
-    <div :key="swapKey" v-fit-block class="region-content">
+    <div :key="swapKey" v-fit-block class="region-content" :class="{ stacked }">
         <template v-if="messageReplaces">
           <div v-fit class="board-line board-message" :class="message!.kind">
             {{ message!.text }}
@@ -101,6 +103,9 @@ const swapKey = computed(() =>
             Startnummer und Textblock nebeneinander: So begrenzt nur noch die
             Höhe die Nummer, statt sie sich mit Name und Verein teilen zu
             müssen – bei gleicher Bereichshöhe wird sie dadurch deutlich größer.
+
+            In einem hohen Bereich (ein Parcours) reicht die Breite dafür nicht:
+            Dort stehen beide untereinander, `stacked` schaltet um.
           -->
           <div class="board-main">
             <div v-fit class="board-line board-startnr">{{ current.startNr }}</div>
