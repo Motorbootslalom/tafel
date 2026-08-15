@@ -1,6 +1,5 @@
 import type { AppState, ClassId, Parcours, ParcoursRuntime, Starter } from '../types'
 import { CLASS_IDS } from '../lib/classes'
-import { uid } from '../lib/ids'
 import { fillMissingStartNumbers } from '../lib/startnumbers'
 import {
   advance,
@@ -30,12 +29,22 @@ const DEFAULT_SPLIT: ClassId[][] = [
   ['4', '5', '6', '7'],
 ]
 
+/**
+ * Feste IDs, bewusst **nicht** zufällig.
+ *
+ * In der Basis-Version führt jedes Fenster dieselbe Änderung selbst aus. Würfelte
+ * jedes seine eigenen IDs, hätten zwei Fenster, die beide mit leerem Speicher
+ * starten, unterschiedliche Parcours – und jede Änderung, die einen Parcours
+ * benennt, liefe im anderen Fenster ins Leere. Genau daran ist es gescheitert:
+ * Die Kopfzeile (ohne ID) kam an, der Parcours-Name und der nächste Starter
+ * nicht.
+ */
 function defaultParcours(count: number): Parcours[] {
   if (count <= 1) {
-    return [{ id: uid('par'), name: 'Parcours 1', classIds: [...CLASS_IDS], wechselFaktor: 2 }]
+    return [{ id: 'par1', name: 'Parcours 1', classIds: [...CLASS_IDS], wechselFaktor: 2 }]
   }
   return Array.from({ length: count }, (_, i) => ({
-    id: uid('par'),
+    id: `par${i + 1}`,
     name: `Parcours ${i + 1}`,
     classIds: DEFAULT_SPLIT[i] ?? [],
     wechselFaktor: 2 as const,
@@ -135,9 +144,20 @@ function syncRuntimes(state: AppState): AppState {
 
 /**
  * Der Reducer: eine reine Funktion `(Zustand, Action) → Zustand`. Host und
- * Clients führen sie identisch aus, deshalb darf hier nichts passieren, was vom
- * Gerät abhängt (keine Zeitstempel aus `Date.now()`, keine DOM-Zugriffe – die
- * aktuelle Zeit kommt als Teil der Action herein).
+ * Clients führen sie identisch aus.
+ *
+ * Er muss dabei **deterministisch** sein: Zwischen den Fenstern eines Browsers
+ * wird nicht der Zustand übertragen, sondern die Änderung selbst – jedes Fenster
+ * führt sie eigenständig aus und muss zum exakt gleichen Ergebnis kommen.
+ * Deshalb darf hier nichts entstehen, was vom Gerät oder vom Zufall abhängt:
+ *
+ * - keine Zeitstempel aus `Date.now()` – die Zeit kommt in der Action mit,
+ * - keine zufälligen IDs – sie kommen in der Action mit oder stehen fest,
+ * - keine DOM-Zugriffe.
+ *
+ * Wird das verletzt, sehen zwei Fenster gleich aus, benennen dieselben Dinge
+ * aber unterschiedlich – und jede folgende Änderung, die etwas benennt, läuft im
+ * anderen Fenster lautlos ins Leere. Festgehalten in `determinismus.test.ts`.
  */
 export function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -261,7 +281,7 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'INSERT_SLOT':
       return mapRuntime(state, action.parcoursId, (rt) =>
-        insertSlot(rt, action.starterId, action.lauf, action.where),
+        insertSlot(rt, action.slotId, action.starterId, action.lauf, action.where),
       )
 
     case 'SHIFT_CLASS': {

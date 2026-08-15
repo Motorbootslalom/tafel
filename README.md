@@ -127,6 +127,11 @@ Drei Entscheidungen tragen den Rest:
 `src/state/reducer.ts` ist eine reine Funktion. Ein Handy am Steg löst exakt
 dieselbe Action aus wie das Admin-Fenster – nur läuft sie beim Host.
 
+Sie muss **deterministisch** sein: Zwischen den Fenstern eines Browsers wird die
+Action übertragen, nicht der Zustand, und jedes Fenster führt sie selbst aus.
+Zeitstempel und IDs kommen deshalb in der Action mit oder stehen fest – sie
+werden nie gewürfelt. `src/state/determinismus.test.ts` hält das fest.
+
 **Was auf der Tafel stand, steht in der Historie.** Die geplante Startliste darf
 sich beliebig ändern (umsortieren, nachtragen, zurückstellen); die tatsächliche
 Reihenfolge und damit die gemessenen Zeiten bleiben davon unberührt.

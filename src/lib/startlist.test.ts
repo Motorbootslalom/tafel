@@ -439,7 +439,8 @@ describe('Listenpflege', () => {
 
   it('fügt einen nachzuholenden Lauf als nächsten ein', () => {
     const { rt, list } = setup({ E: 2, '1': 2 })
-    const after = insertSlot(rt, list[0].id, 2, 'next')
+    const after = insertSlot(rt, 'nachtrag1', list[0].id, 2, 'next')
+    expect(after.slots[0].id).toBe('nachtrag1')
     expect(after.slots[0].starterId).toBe(list[0].id)
     expect(after.slots[0].lauf).toBe(2)
     expect(after.slots).toHaveLength(5)

@@ -6,6 +6,7 @@ import { useStore } from '../state/store'
 import { classColor } from '../lib/classes'
 import { laeufeOf, nextReleasableLauf, type LaufAnchor } from '../lib/startlist'
 import { sortedByClassThenStartNr } from '../lib/startnumbers'
+import { uid } from '../lib/ids'
 
 /**
  * Die erzeugte Startliste nachbearbeiten.
@@ -120,6 +121,9 @@ function insert(where: 'next' | 'end'): void {
   store.dispatch({
     type: 'INSERT_SLOT',
     parcoursId: props.parcours.id,
+    // Hier erzeugt, nicht im Reducer: Alle Fenster müssen denselben Eintrag
+    // bekommen, sonst zeigt eine spätere Änderung daran ins Leere.
+    slotId: uid('slot'),
     starterId: insertStarterId.value,
     lauf: insertLauf.value,
     where,

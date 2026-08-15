@@ -176,23 +176,6 @@ func TestFreigabeSchaltetDasGeraetFrei(t *testing.T) {
 	expect(t, host, "action")
 }
 
-func TestEntzugSperrtDasGeraetWieder(t *testing.T) {
-	_, url := startServer(t)
-	host := dial(t, url, "room=r&device=host&role=host&key="+testKey)
-	client := dial(t, url, "room=r&device=phone")
-
-	send(t, client, "phone", "", "hello")
-	expect(t, host, "hello")
-	send(t, host, "host", "phone", "welcome")
-	expect(t, client, "welcome")
-
-	send(t, host, "host", "phone", "revoked")
-	expect(t, client, "revoked")
-
-	send(t, client, "phone", "", "action")
-	expectSilence(t, host)
-}
-
 func TestEntzugTrenntDieVerbindung(t *testing.T) {
 	// „Keine Rechte mehr“ und „kommt nicht mehr durch“ sind zweierlei. Beim
 	// Entzug muss beides gelten – sonst hinge ein abgemeldetes Gerät weiter in
@@ -226,6 +209,9 @@ func TestAbgewiesenesGeraetWirdGetrennt(t *testing.T) {
 	expectClosed(t, client)
 }
 
+// Dass die Sperre greift, lässt sich nur über eine neue Verbindung prüfen: Die
+// alte wird beim Entzug geschlossen, ein Senden darüber wäre ein Rennen zwischen
+// Schreiben und Trennen.
 func TestNachEntzugKommtNichtsMehrDurch(t *testing.T) {
 	_, url := startServer(t)
 	host := dial(t, url, "room=r&device=host&role=host&key="+testKey)

@@ -1,5 +1,4 @@
 import type { ClassId, Parcours, ParcoursRuntime, StartSlot, Starter } from '../types'
-import { uid } from './ids'
 import { computeVerzahnung } from './verzahnung'
 
 /**
@@ -18,9 +17,13 @@ export function generateSlots(
   const { sequence } = computeVerzahnung(parcours, starters)
   const slots: StartSlot[] = []
   for (let lauf = 1; lauf <= Math.max(1, laufCount); lauf++) {
-    for (const s of sequence) {
-      slots.push({ id: uid('slot'), starterId: s.id, lauf, status: 'pending' })
-    }
+    sequence.forEach((s, index) => {
+      // Die ID ergibt sich aus Parcours, Lauf und Position – bewusst nicht
+      // zufällig. Jedes Fenster erzeugt die Startliste selbst; mit Zufall hätte
+      // jedes andere Slot-IDs, und jede Änderung, die einen Start benennt
+      // (vorziehen, zurückstellen, verschieben), liefe anderswo ins Leere.
+      slots.push({ id: `${parcours.id}-l${lauf}-${index}`, starterId: s.id, lauf, status: 'pending' })
+    })
   }
   return slots
 }
@@ -480,11 +483,14 @@ export function shiftClass(
  */
 export function insertSlot(
   rt: ParcoursRuntime,
+  slotId: string,
   starterId: string,
   lauf: number,
   where: 'next' | 'end',
 ): ParcoursRuntime {
-  const slot: StartSlot = { id: uid('slot'), starterId, lauf, status: 'pending' }
+  // Die ID kommt von außen: Sie muss in allen Fenstern dieselbe sein, darf hier
+  // also nicht gewürfelt werden.
+  const slot: StartSlot = { id: slotId, starterId, lauf, status: 'pending' }
   if (where === 'end') return withSlots(rt, [...rt.slots, slot])
   const firstPending = rt.slots.findIndex((s) => s.status === 'pending')
   const at = firstPending < 0 ? rt.slots.length : firstPending

@@ -116,6 +116,10 @@ export function createStore(): Store {
   const loaded = loadState()
   const state = reactive<AppState>(loaded ? migrate(loaded) : initialState()) as AppState
 
+  // Beim allerersten Start sofort sichern: Ein zweites Fenster übernimmt ihn
+  // dann, statt selbst einen anzulegen.
+  if (!loaded) saveState(state as AppState)
+
   const transportConfig = reactive<TransportConfig>(loadTransportConfig())
   const pairing = reactive<PairingState>(emptyPairing())
   const pendingRequest = ref<{ deviceId: string; name: string } | null>(null)

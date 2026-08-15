@@ -37,7 +37,18 @@ export type Action =
   | { type: 'MOVE_SLOT_TO_INDEX'; parcoursId: string; slotId: string; index: number }
   | { type: 'MOVE_SLOT_TO_ANCHOR'; parcoursId: string; slotId: string; anchor: LaufAnchor }
   | { type: 'REMOVE_SLOT'; parcoursId: string; slotId: string }
-  | { type: 'INSERT_SLOT'; parcoursId: string; starterId: string; lauf: number; where: 'next' | 'end' }
+  /**
+   * Einen Lauf nachtragen. Die `slotId` kommt von der Oberfläche, damit alle
+   * Fenster denselben Eintrag erzeugen – der Reducer darf nicht würfeln.
+   */
+  | {
+      type: 'INSERT_SLOT'
+      parcoursId: string
+      slotId: string
+      starterId: string
+      lauf: number
+      where: 'next' | 'end'
+    }
   | { type: 'SHIFT_CLASS'; parcoursId: string; klasse: ClassId; steps: number }
   | { type: 'RELEASE_LAUF'; parcoursId: string; lauf: number }
   | { type: 'SET_MESSAGE'; parcoursId: string; message: BoardMessage | null }
