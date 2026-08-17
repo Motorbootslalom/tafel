@@ -13,7 +13,18 @@
 
   "durable_objects": {
     "bindings": [{ "name": "RAUM", "class_name": "Raum" }]
-  }
+  },
+
+  // Die workers.dev-Adresse ist die, die in der Verwaltung eingetragen wird –
+  // also ausdrücklich an. Ohne diese Zeile wäre sie zwar auch an, aber Wrangler
+  // warnt bei jedem Ausrollen, dass es eine Vorgabe ist.
+  "workers_dev": true,
+
+  // Vorschau-Adressen dagegen aus: Sie ergäben je Fassung eine weitere
+  // öffentliche Adresse auf dasselbe Relais. Für einen Dienst, dessen einziger
+  // Schutz ein Schlüssel ist, ist jede zusätzliche Adresse eine zu viel – und
+  // gebraucht wird hier ohnehin nur die eine.
+  "preview_urls": false
 
   // Der Host-Schlüssel gehört nicht hierher, sondern daneben:
   //   npx wrangler secret put HOST_KEY

@@ -1,10 +1,13 @@
 # Tafel-Relais auf Cloudflare
 
-> **Der Code ist da, ausgerollt wurde er noch nie.** Die Fachlogik ist durch
-> Tests gedeckt (`npm run test:cloud`), die Anbindung in `src/worker.mjs`
-> dagegen nicht – dafür bräuchte es ein Konto. Geprüft im August 2026 gegen die
-> Dokumentation; die API war zuletzt in Bewegung, deshalb unten zu jedem heiklen
-> Punkt die Quelle.
+> **Ausgerollt und geprüft** (August 2026, Wrangler 4.123). Gegen die laufende
+> Instanz nachgemessen: Die Eingangskontrolle weist eine Verbindung ohne
+> Geräte-Kennung und einen Host mit falschem Schlüssel ab, ein Gerät wird
+> angenommen, und das Lebenszeichen `"ping"` beantwortet die Laufzeitumgebung
+> mit `"pong"` – die Auto-Antwort greift also, das Objekt schläft. Nicht gegen
+> die laufende Instanz geprüft ist der Ablauf **mit** Host, weil dafür der
+> Host-Schlüssel nötig wäre; er ist durch die Tests in `src/raum.test.mjs`
+> gedeckt.
 
 Dieselbe Aufgabe wie [`../server/`](../server/) (lokal) und [`../cloud/`](../cloud/)
 (AWS): Verwaltung, Tafel und Handys am Steg sehen denselben Stand. Gebraucht wird
@@ -100,9 +103,10 @@ Geheimnis daneben. Er ist das Einzige, was verhindert, dass ein Fremder die Tafe
 
 > Registriert wird die Klasse über den `exports`-Block in `wrangler.jsonc`, mit
 > `"storage": "sqlite"` — im kostenlosen Tarif Pflicht, die Schlüssel-Wert-Ablage
-> gibt es dort nicht. Ältere Anleitungen zeigen stattdessen einen
-> `migrations`-Block mit `new_sqlite_classes`; beides beschreibt dasselbe.
-> Sollte Wrangler meckern, ist es der alte Weg.
+> gibt es dort nicht. Mit Wrangler 4.123 nimmt der Befehl das an und meldet
+> „Durable Object exports reconciliation: Created: Raum". Ältere Anleitungen
+> zeigen stattdessen einen `migrations`-Block mit `new_sqlite_classes`; beides
+> beschreibt dasselbe.
 
 Am Ende steht die Adresse:
 
@@ -173,9 +177,9 @@ Grenzen, die man kennen sollte:
 
 ## Was offen ist
 
-- **Nie ausgerollt.** `worker.mjs` ist gegen die Dokumentation geschrieben, nicht
-  gegen eine laufende Instanz. Beim ersten Ausrollen sind die wahrscheinlichsten
-  Stolpersteine die Form des `exports`-Blocks und das `compatibility_date`.
+- **Der Ablauf mit Host** ist nur durch Tests gedeckt, nicht gegen die laufende
+  Instanz gemessen – dafür wäre der Host-Schlüssel nötig. Wer ihn hat, sieht es
+  am schnellsten in der Verwaltung: verbinden, Gerät freischalten, weiterschalten.
 - **`parseHead` liest den ganzen Umschlag.** Es schickt die **vollständige**
   Nachricht durch `JSON.parse`, nur um `to` und `msg.kind` zu erfahren. Bei einem
   90 kB großen Zustand ist das bei jedem Sprung vermeidbare Arbeit. Geändert

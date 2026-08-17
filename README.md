@@ -121,8 +121,7 @@ Dafür braucht es eine Verbindung zwischen den Geräten – drei stehen bereit:
 - **[`cloud/`](cloud/)** – dasselbe über AWS (API Gateway WebSocket, Lambda,
   DynamoDB), wenn vor Ort verlässlich Netz steht.
 - **[`cloudflare/`](cloudflare/)** – dasselbe als Worker mit Durable Object.
-  Deutlich weniger bewegliche Teile als die AWS-Fassung und im kostenlosen Tarif;
-  ausgerollt wurde es allerdings noch nie.
+  Deutlich weniger bewegliche Teile als die AWS-Fassung und im kostenlosen Tarif.
 
 Alle drei sind Umsetzungen derselben, kleinen Aufgabe; weitere Wege stehen unten.
 
