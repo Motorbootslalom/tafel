@@ -163,38 +163,48 @@ export function tracksMatch(
   return classes.every((c) => set.has(c))
 }
 
-type Step = { kind: 'starter'; s: Starter } | { kind: 'pause' }
+type Step<T> = { kind: 'item'; value: T } | { kind: 'pause' }
 
 /**
- * Baut die verzahnte Startreihenfolge aus einer Spur-Anordnung: Round-Robin
- * über die Spuren. Eine Pause verbraucht einen Takt ihrer Spur, ohne einen
- * Starter zu erzeugen – die nachfolgende Klasse setzt dadurch später ein, ohne
- * dass eine Lücke in der Startliste entsteht.
+ * Baut die verzahnte Reihenfolge aus einer Spur-Anordnung: Round-Robin über die
+ * Spuren. Eine Pause verbraucht einen Takt ihrer Spur, ohne einen Starter zu
+ * erzeugen – die nachfolgende Klasse setzt dadurch später ein, ohne dass eine
+ * Lücke in der Startliste entsteht.
+ *
+ * Bewusst über einen freien Typ: Beim Erzeugen der Startliste werden Starter
+ * verzahnt, beim Wiedereinsteigen einer ausgesetzten Klasse dagegen die noch
+ * offenen Slots des laufenden Laufs (siehe `startlist.reinterleaveOpen`).
+ *
+ * `startTrack` gibt an, bei welcher Spur der Reigen beginnt. Beim Neuaufbau
+ * mitten im Lauf steht dort die Spur, die nach dem zuletzt gezeigten Starter an
+ * der Reihe wäre – sonst stünden an der Nahtstelle zwei Starter derselben Spur
+ * hintereinander.
  */
-export function buildSequence(
+export function buildSequence<T>(
   tracks: TrackItem[][],
-  byClass: Map<ClassId, Starter[]>,
-): Starter[] {
-  const stepTracks: Step[][] = tracks.map((track) => {
-    const steps: Step[] = []
+  byClass: Map<ClassId, T[]>,
+  startTrack = 0,
+): T[] {
+  const stepTracks: Step<T>[][] = tracks.map((track) => {
+    const steps: Step<T>[] = []
     for (const item of track) {
       if (item.kind === 'pause') {
         for (let i = 0; i < Math.max(0, item.length); i++) steps.push({ kind: 'pause' })
       } else {
-        for (const s of byClass.get(item.klasse) ?? []) steps.push({ kind: 'starter', s })
+        for (const value of byClass.get(item.klasse) ?? []) steps.push({ kind: 'item', value })
       }
     }
     return steps
   })
 
   const pos = stepTracks.map(() => 0)
-  const sequence: Starter[] = []
+  const sequence: T[] = []
   const n = stepTracks.length
-  let idx = 0
+  let idx = n > 0 ? ((startTrack % n) + n) % n : 0
 
   const remaining = () =>
     stepTracks.reduce(
-      (sum, steps, i) => sum + steps.slice(pos[i]).filter((s) => s.kind === 'starter').length,
+      (sum, steps, i) => sum + steps.slice(pos[i]).filter((s) => s.kind === 'item').length,
       0,
     )
 
@@ -210,10 +220,19 @@ export function buildSequence(
     const step = stepTracks[t][pos[t]]
     pos[t]++
     idx++
-    if (step.kind === 'starter') sequence.push(step.s)
+    if (step.kind === 'item') sequence.push(step.value)
   }
 
   return sequence
+}
+
+/** Spur-Nummer je Klasse – wer nicht vorkommt, fehlt in der Anordnung. */
+export function trackOfClass(tracks: TrackItem[][]): Map<ClassId, number> {
+  const m = new Map<ClassId, number>()
+  tracks.forEach((track, index) => {
+    for (const item of track) if (item.kind === 'class') m.set(item.klasse, index)
+  })
+  return m
 }
 
 export interface SequenceAnalysis {

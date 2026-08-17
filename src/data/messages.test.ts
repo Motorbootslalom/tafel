@@ -23,13 +23,19 @@ describe('Meldungsvorlagen', () => {
     expect(new Set(labels).size).toBe(labels.length)
   })
 
-  it('zeigen Störungen und Pausen als solche an', () => {
-    // Nur diese beiden Arten verdrängen den Starter auf der Tafel – eine
-    // Begrüßung darf das nicht versehentlich tun.
+  it('zeigt Störungen als Störung an', () => {
     const stoerung = ALL_TEMPLATES.find((t) => t.label === 'Störung im Betriebsablauf')
     expect(stoerung?.kind).toBe('stoerung')
-    const gruss = ALL_TEMPLATES.find((t) => t.label === 'Guten Morgen')
-    expect(gruss?.kind).toBe('info')
+  })
+
+  it('stellt Begrüßungen groß auf die Tafel, nicht klein unter den Starter', () => {
+    // Eine Begrüßung richtet sich an alle im Umfeld und wird gelesen, bevor der
+    // erste Starter oben steht. Als Info-Zeile unter dem Starter ginge sie in
+    // 50 m Entfernung unter.
+    const gruesse = MESSAGE_GROUPS.find((g) => g.title === 'Begrüßung')!
+    for (const template of gruesse.items) {
+      expect(template.kind, template.label).toBe('pause')
+    }
   })
 
   it('enthalten die bewährten Texte der bisherigen Word-Lösung', () => {

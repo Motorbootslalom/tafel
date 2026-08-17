@@ -10,16 +10,19 @@ import {
   moveSlot,
   moveSlotToAnchor,
   moveSlotToIndex,
+  moveClassBefore,
   pruneSlots,
   reactivateSlot,
+  reinterleaveOpen,
   releaseLauf,
   removeSlot,
-  shiftClass,
+  setClassPaused,
   showSlot,
   undoLast,
   type MoveOptions,
 } from '../lib/startlist'
-import { computeVerzahnung } from '../lib/verzahnung'
+import { computeVerzahnung, trackOfClass } from '../lib/verzahnung'
+import { defaultTimings } from '../data/timings'
 import { classStats, statsToPresets } from '../lib/timing'
 import type { Action } from './actions'
 
@@ -62,7 +65,9 @@ export function initialState(): AppState {
     starters: [],
     parcoursList,
     runtimes: parcoursList.map((p) => emptyRuntime(p.id)),
-    timings: {},
+    // Vorgabewerte aus der DM 2025 – damit die Wartezeit-Prognose schon vor dem
+    // ersten gemessenen Start etwas Vernünftiges sagt.
+    timings: defaultTimings(),
     board: {
       kopfzeile: '',
       logoDataUrl: '',
@@ -94,21 +99,22 @@ function moveOptions(state: AppState, parcoursId: string): MoveOptions {
     return { keepInterleave: false, trackOf: () => null }
   }
 
-  const { tracks } = computeVerzahnung(parcours, state.starters)
-  const trackOfClass = new Map<ClassId, number>()
-  tracks.forEach((track, index) => {
-    for (const item of track) if (item.kind === 'class') trackOfClass.set(item.klasse, index)
-  })
-
+  const spurVon = trackOfClass(computeVerzahnung(parcours, state.starters).tracks)
   const klasseOf = klasseLookup(state.starters)
   return {
     keepInterleave: true,
     trackOf: (starterId) => {
       const klasse = klasseOf(starterId)
       if (!klasse) return null
-      return trackOfClass.get(klasse) ?? null
+      return spurVon.get(klasse) ?? null
     },
   }
+}
+
+/** Die Spur-Anordnung eines Parcours – Grundlage jeder Neu-Verzahnung. */
+function tracksOf(state: AppState, parcoursId: string) {
+  const parcours = state.parcoursList.find((p) => p.id === parcoursId)
+  return parcours ? computeVerzahnung(parcours, state.starters).tracks : null
 }
 
 /** Wendet eine Änderung auf die Runtime genau eines Parcours an. */
@@ -132,12 +138,18 @@ function syncRuntimes(state: AppState): AppState {
   const runtimes = state.parcoursList.map((p) => {
     const existing = byId.get(p.id)
     if (!existing) return emptyRuntime(p.id)
-    // Zustände aus einer älteren Fassung kennen die Lauf-Freigabe noch nicht.
-    // Was bereits gefahren wurde, gilt als freigegeben – sonst stünde eine
-    // laufende Veranstaltung plötzlich still.
-    if (typeof existing.releasedLauf === 'number') return existing
-    const gefahren = existing.slots.filter((s) => s.status === 'done').map((s) => s.lauf)
-    return { ...existing, releasedLauf: gefahren.length ? Math.max(...gefahren) : 1 }
+    // Felder, die eine ältere Fassung noch nicht kannte, auffüllen.
+    const ergaenzt: ParcoursRuntime = {
+      ...existing,
+      pausedClasses: existing.pausedClasses ?? [],
+      pullForward: existing.pullForward ?? true,
+    }
+
+    // Die Lauf-Freigabe kam später dazu. Was bereits gefahren wurde, gilt als
+    // freigegeben – sonst stünde eine laufende Veranstaltung plötzlich still.
+    if (typeof ergaenzt.releasedLauf === 'number') return ergaenzt
+    const gefahren = ergaenzt.slots.filter((s) => s.status === 'done').map((s) => s.lauf)
+    return { ...ergaenzt, releasedLauf: gefahren.length ? Math.max(...gefahren) : 1 }
   })
   return { ...state, runtimes }
 }
@@ -241,8 +253,10 @@ export function reduce(state: AppState, action: Action): AppState {
         })),
       }
 
-    case 'ADVANCE':
-      return mapRuntime(state, action.parcoursId, (rt) => advance(rt, action.now))
+    case 'ADVANCE': {
+      const klasseOf = klasseLookup(state.starters)
+      return mapRuntime(state, action.parcoursId, (rt) => advance(rt, action.now, klasseOf))
+    }
 
     case 'SHOW_SLOT':
       return mapRuntime(state, action.parcoursId, (rt) => showSlot(rt, action.slotId, action.now))
@@ -284,11 +298,38 @@ export function reduce(state: AppState, action: Action): AppState {
         insertSlot(rt, action.slotId, action.starterId, action.lauf, action.where),
       )
 
-    case 'SHIFT_CLASS': {
+    case 'SET_CLASS_PAUSED': {
       const klasseOf = klasseLookup(state.starters)
+      const tracks = tracksOf(state, action.parcoursId)
+      return mapRuntime(state, action.parcoursId, (rt) => {
+        const next = setClassPaused(rt, action.klasse, action.paused)
+        // Ohne „vorziehen" bleibt die geplante Reihenfolge stehen; die Lücken
+        // schließen sich beim Weiterschalten von selbst.
+        if (next === rt || !next.pullForward || !tracks) return next
+        return reinterleaveOpen(next, tracks, klasseOf)
+      })
+    }
+
+    case 'MOVE_CLASS_BEFORE': {
+      const klasseOf = klasseLookup(state.starters)
+      const tracks = tracksOf(state, action.parcoursId)
+      if (!tracks) return state
       return mapRuntime(state, action.parcoursId, (rt) =>
-        shiftClass(rt, action.klasse, klasseOf, action.steps),
+        moveClassBefore(rt, action.klasse, action.before, tracks, klasseOf),
       )
+    }
+
+    case 'SET_PULL_FORWARD': {
+      const klasseOf = klasseLookup(state.starters)
+      const tracks = tracksOf(state, action.parcoursId)
+      return mapRuntime(state, action.parcoursId, (rt) => {
+        if (rt.pullForward === action.pullForward) return rt
+        const next = { ...rt, pullForward: action.pullForward }
+        // Einschalten wirkt sofort auf den Rest des Laufs. Ausschalten lässt die
+        // bereits umsortierte Liste stehen – zurückgerechnet wird nicht, sonst
+        // spränge am Steg die Reihenfolge unter den Händen weg.
+        return action.pullForward && tracks ? reinterleaveOpen(next, tracks, klasseOf) : next
+      })
     }
 
     case 'RELEASE_LAUF':
@@ -341,7 +382,10 @@ export function migrate(loaded: AppState): AppState {
     ...loaded,
     board: { ...base.board, ...(loaded.board ?? {}) },
     keepInterleave: loaded.keepInterleave ?? true,
-    timings: loaded.timings ?? {},
+    // Eine bestehende Tabelle bleibt, wie sie ist – auch eine leere: Wer die
+    // Vorgaben bewusst gelöscht hat, soll sie nicht beim nächsten Laden
+    // zurückbekommen. Über „Werte der DM 2025 einsetzen" sind sie erreichbar.
+    timings: loaded.timings ?? defaultTimings(),
     devices: loaded.devices ?? [],
     runtimes: loaded.runtimes ?? [],
   }

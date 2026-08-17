@@ -29,7 +29,9 @@ function ablauf(): Action[] {
     { type: 'SET_BOARD', patch: { kopfzeile: '20. Beetzseepokal' } },
     { type: 'ADVANCE', parcoursId: 'par1', now: 1_000 },
     { type: 'ADVANCE', parcoursId: 'par1', now: 61_000 },
-    { type: 'SHIFT_CLASS', parcoursId: 'par1', klasse: 'E', steps: 1 },
+    { type: 'SET_CLASS_PAUSED', parcoursId: 'par1', klasse: 'E', paused: true },
+    { type: 'ADVANCE', parcoursId: 'par1', now: 121_000 },
+    { type: 'SET_CLASS_PAUSED', parcoursId: 'par1', klasse: 'E', paused: false },
     {
       type: 'INSERT_SLOT',
       parcoursId: 'par1',

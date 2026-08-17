@@ -40,7 +40,9 @@ const parcours: Parcours = {
   wechselFaktor: 2,
 }
 
-function runtime(options: { releasedLauf?: number } = {}): ParcoursRuntime {
+function runtime(
+  options: { releasedLauf?: number; pausedClasses?: ClassId[]; pullForward?: boolean } = {},
+): ParcoursRuntime {
   const slots: StartSlot[] = [
     { id: 'a', starterId: 's1', lauf: 1, status: 'done', shownAt: Date.now() - 30_000 },
     { id: 'b', starterId: 's2', lauf: 2, status: 'pending' },
@@ -51,10 +53,33 @@ function runtime(options: { releasedLauf?: number } = {}): ParcoursRuntime {
     history: ['a'],
     message: null,
     releasedLauf: options.releasedLauf ?? 2,
+    pausedClasses: options.pausedClasses ?? [],
+    pullForward: options.pullForward ?? true,
   }
 }
 
-function render(rt: ParcoursRuntime, originMode: OriginMode = 'verein') {
+/**
+ * Attrappe für vuedraggable: reicht die Liste durch und rendert den `item`-Slot.
+ * Das Ziehen selbst bildet der Test nach, indem er die Liste umstellt und `end`
+ * auslöst – genau in dieser Reihenfolge arbeitet auch die echte Komponente.
+ */
+const DraggableStub = {
+  name: 'draggable',
+  props: ['modelValue', 'itemKey', 'animation'],
+  emits: ['end', 'update:modelValue'],
+  template: `<div class="klassen-stub">
+    <template v-for="(element, index) in modelValue" :key="index">
+      <slot name="item" :element="element" :index="index" />
+    </template>
+    <slot name="footer" />
+  </div>`,
+}
+
+function render(
+  rt: ParcoursRuntime,
+  originMode: OriginMode = 'verein',
+  stubs: NonNullable<NonNullable<Parameters<typeof mount>[1]>['global']>['stubs'] = {},
+) {
   const dispatch = vi.fn()
   const state: AppState = {
     ...initialState(),
@@ -74,7 +99,7 @@ function render(rt: ParcoursRuntime, originMode: OriginMode = 'verein') {
 
   const wrapper = mount(StegPanel, {
     props: { parcours, runtime: rt },
-    global: { provide: { [storeKey as symbol]: store } },
+    global: { provide: { [storeKey as symbol]: store }, stubs },
   })
   return { wrapper, dispatch }
 }
@@ -118,11 +143,11 @@ describe('StegPanel – eingeklappte Abschnitte', () => {
     return wrapper.findAll('details.steg-section').find((d) => d.find('summary').text().includes(titel))
   }
 
-  it('zeigt Verzahnung und Meldung eingeklappt', () => {
+  it('zeigt Klassen und Meldung eingeklappt', () => {
     // Im Normalbetrieb wird nur weitergeschaltet – alles Weitere kostete sonst
     // dauerhaft Bildschirmhöhe und zwänge zum Scrollen.
     const { wrapper } = render(runtime())
-    for (const titel of ['Verzahnung verschieben', 'Meldung auf der Tafel']) {
+    for (const titel of ['Klassen aussetzen', 'Meldung auf der Tafel']) {
       const abschnitt = section(wrapper, titel)
       expect(abschnitt, titel).toBeDefined()
       expect(abschnitt!.attributes('open')).toBeUndefined()
@@ -159,6 +184,147 @@ describe('StegPanel – eingeklappte Abschnitte', () => {
   it('zeigt ohne Meldung keinen Hinweis im Titel', () => {
     const summary = section(render(runtime()).wrapper, 'Meldung auf der Tafel')!.find('summary')
     expect(summary.find('.aktiv').exists()).toBe(false)
+  })
+})
+
+describe('StegPanel – Klassen aussetzen lassen', () => {
+  /** Der Chip einer Klasse im Abschnitt „Klassen aussetzen". */
+  function klasseChip(wrapper: ReturnType<typeof render>['wrapper'], klasse: string) {
+    return wrapper.findAll('.klasse-toggle').find((c) => c.find('.badge').text() === klasse)!
+  }
+
+  /** Die Schaltfläche darin – sie setzt die Klasse aus bzw. holt sie zurück. */
+  function klasseButton(wrapper: ReturnType<typeof render>['wrapper'], klasse: string) {
+    return klasseChip(wrapper, klasse).find('.klasse-schalter')
+  }
+
+  it('nennt je Klasse die Zahl der noch ausstehenden Starter', () => {
+    // Genau daran entscheidet sich am Steg, ob sich das Aussetzen lohnt.
+    const { wrapper } = render(runtime())
+    expect(klasseButton(wrapper, '4').text()).toContain('noch 1')
+  })
+
+  it('setzt eine Klasse per Klick aus', () => {
+    const { wrapper, dispatch } = render(runtime())
+    klasseButton(wrapper, '4').trigger('click')
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_CLASS_PAUSED',
+      parcoursId: 'p1',
+      klasse: '4',
+      paused: true,
+    })
+  })
+
+  it('holt eine ausgesetzte Klasse per Klick zurück', () => {
+    const { wrapper, dispatch } = render(runtime({ pausedClasses: ['4'] }))
+
+    expect(klasseChip(wrapper, '4').classes()).toContain('aus')
+    klasseButton(wrapper, '4').trigger('click')
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_CLASS_PAUSED',
+      parcoursId: 'p1',
+      klasse: '4',
+      paused: false,
+    })
+  })
+
+  it('führt die Klassen in der Reihenfolge ihres nächsten Starts', () => {
+    // Am Steg zählt, was als Nächstes kommt – nicht die kanonische Sortierung.
+    // Erst dadurch hat die Position in der Reihe überhaupt eine Bedeutung.
+    const rt: ParcoursRuntime = {
+      ...runtime(),
+      slots: [
+        { id: 'a', starterId: 's2', lauf: 2, status: 'pending' },
+        { id: 'b', starterId: 's1', lauf: 2, status: 'pending' },
+      ],
+      history: [],
+    }
+    expect(render(rt).wrapper.findAll('.klasse-toggle .badge').map((b) => b.text())).toEqual([
+      '4',
+      'E',
+    ])
+  })
+
+  it('zieht eine Klasse vor die, hinter der sie abgelegt wurde', async () => {
+    const rt: ParcoursRuntime = {
+      ...runtime(),
+      slots: [
+        { id: 'a', starterId: 's1', lauf: 2, status: 'pending' },
+        { id: 'b', starterId: 's2', lauf: 2, status: 'pending' },
+      ],
+      history: [],
+    }
+    const { wrapper, dispatch } = render(rt, 'verein', { draggable: DraggableStub })
+    const zone = wrapper.findComponent(DraggableStub)
+
+    // Genau das macht vuedraggable: erst die Liste umstellen, dann `end` melden.
+    ;(zone.props('modelValue') as { klasse: string }[]).reverse()
+    zone.vm.$emit('end', { oldIndex: 1, newIndex: 0 })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'MOVE_CLASS_BEFORE',
+      parcoursId: 'p1',
+      klasse: '4',
+      before: 'E',
+    })
+  })
+
+  it('verrät im Titel, dass eine Klasse aussetzt', () => {
+    // Eingeklappt darf nicht verborgen bleiben, dass ein Boot fehlt.
+    const { wrapper } = render(runtime({ pausedClasses: ['4'] }))
+    const summary = wrapper
+      .findAll('details.steg-section')
+      .find((d) => d.find('summary').text().includes('Klassen aussetzen'))!
+      .find('summary')
+
+    expect(summary.text()).toContain('setzt aus: 4')
+  })
+
+  it('nennt keinen nächsten Starter, wenn alle Übrigen aussetzen', () => {
+    const { wrapper } = render(runtime({ pausedClasses: ['4'] }))
+    expect(nextBox(wrapper)).toContain('Alle verbleibenden Starts gehören zu ausgesetzten Klassen')
+    expect(nextBox(wrapper)).not.toContain('Lara')
+  })
+
+  it('überspringt die Klasse auch ohne Vorziehen', () => {
+    // Ein fehlendes Boot fährt nicht – die Einstellung entscheidet nur, was mit
+    // den freigewordenen Plätzen geschieht.
+    const { wrapper } = render(runtime({ pausedClasses: ['4'], pullForward: false }))
+    expect(nextBox(wrapper)).not.toContain('Lara')
+  })
+
+  it('schaltet das Vorziehen um', () => {
+    const { wrapper, dispatch } = render(runtime())
+    const box = wrapper.find('.vorziehen input')
+
+    expect((box.element as HTMLInputElement).checked).toBe(true)
+    box.setValue(false)
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_PULL_FORWARD',
+      parcoursId: 'p1',
+      pullForward: false,
+    })
+  })
+})
+
+describe('StegPanel – Starter davor', () => {
+  it('nennt auch die Klasse', () => {
+    // Am Steg wird daran abgelesen, welches Boot gerade zurückkommt.
+    const rt: ParcoursRuntime = {
+      ...runtime(),
+      slots: [
+        { id: 'a', starterId: 's1', lauf: 1, status: 'done', shownAt: 1000 },
+        { id: 'b', starterId: 's2', lauf: 2, status: 'done', shownAt: 2000 },
+      ],
+      history: ['a', 'b'],
+    }
+    expect(render(rt).wrapper.find('.steg-current').text()).toContain(
+      'davor: E02 · Klasse E · Glenn Buttler',
+    )
   })
 })
 

@@ -86,9 +86,9 @@ ein defektes Boot – waren praktisch nicht abbildbar.
 | T-3  | Die **Startnummer** ist deutlich größer als alles andere.                                            |
 | T-4  | Ebenfalls prominent: **Klasse** und **Lauf**.                                                        |
 | T-5  | **Name** und **Verein/Bundesland** kleiner – sie sind für die Zuschauer, nicht für die Wertung.      |
-| T-6  | Der **Starter davor** ist optional mit anzuzeigen.                                                   |
+| T-6  | Der **Starter davor** ist optional mit anzuzeigen – mit Startnummer, **Klasse** und Namen, damit ablesbar ist, welches Boot gerade zurückkommt. |
 | T-7  | Platz für **Logo** und **Kopfzeile** (wie in der BSP-Fassung); beides abschaltbar.                   |
-| T-8  | Freie **Meldungen** (Störung, Pause, Begrüßung). Störung und Pause verdrängen den Starter.           |
+| T-8  | Freie **Meldungen** (Störung, Pause, Begrüßung). Störung und Pause verdrängen den Starter, der Parcours-Name bleibt aber stehen – sonst wäre bei zwei Parcours nicht erkennbar, für welchen Bereich die Meldung gilt. Begrüßungen zählen dabei zu „Pause": Sie richten sich an alle im Umfeld und gingen als kleine Zeile unter dem Starter unter. |
 | T-9  | Zu lange Namen oder Vereinsnamen werden gestaucht, nie abgeschnitten.                                |
 | T-10 | Vollbild ohne Mauszeiger.                                                                            |
 | T-11 | Die Startnummer steht **neben** den Angaben zum Starter, nicht darüber. Untereinander teilten sich beide die Höhe, während links und rechts Platz frei blieb; nebeneinander begrenzt nur die Bereichshöhe die Nummer. |
@@ -120,10 +120,11 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | V-1  | Die Klassen eines Parcours werden auf 1–4 **Spuren** verteilt und im Wechsel abgearbeitet.            |
 | V-2  | Die automatische Verteilung gleicht die Starterzahlen aus, damit der unverzahnte End-Block kurz bleibt. |
 | V-3  | Die Zuordnung Klasse → Spur ist von Hand änderbar.                                                    |
-| V-4  | **Pausen** verschieben eine Spur um n Takte nach hinten – ohne Lücke in der Startliste.                |
-| V-5  | Die Verzahnung lässt sich **im laufenden Betrieb** verschieben, wenn das Boot einer Klasse ausfällt: Die Klasse rutscht nach hinten, eine andere springt ein. Ist das Boot wieder da, geht es zurück. |
-| V-6  | Klassen lassen sich per **Drag & Drop** zwischen den Spuren und innerhalb einer Spur verschieben. Die Reihenfolge in einer Spur bestimmt, welche Klasse dort zuerst fährt. |
+| V-4  | **Pausen** setzen eine Spur um n Takte aus – ohne Lücke in der Startliste. Eine Pause steht an jeder Stelle einer Spur: vorangestellt versetzt sie die ganze Spur, zwischen zwei Klassen nur deren Übergang. |
+| V-5  | Fällt im laufenden Betrieb ein Boot aus, lässt sich die **Klasse aussetzen**: Sie wird übersprungen. Mit „Andere Klassen vorziehen" rückt die nächste Klasse **derselben Spur** auf ihre Plätze, damit der Wechsel zwischen den Spuren erhalten bleibt (`E2E21212121216163` → `E6E61111113`, wenn Klasse 2 ausfällt). Ohne die Einstellung schließen sich die Lücken nur (`EE111116163`). Die Starts der ausgesetzten Klasse wandern dabei ans **Ende ihres Laufs** – zwischen den anderen stehend sähe es aus, als sei die falsche Klasse herausgenommen worden; in Startliste und Editor sind sie als „Klasse setzt aus" gekennzeichnet. Ist das Boot wieder da, wird der Rest des Laufs erneut mit ihr verzahnt. Spätere Läufe bleiben auf der ursprünglichen Verzahnung. |
+| V-6  | Klassen **und Pausen** lassen sich per **Drag & Drop** zwischen den Spuren und innerhalb einer Spur verschieben. Die Reihenfolge in einer Spur bestimmt, welche Klasse dort zuerst fährt. |
 | V-7  | Wird ein Starter in der Startliste umgesetzt, **rutscht seine Spur mit**, damit nie zwei Starter derselben Klasse hintereinander stehen – sonst fehlt am Steg die Zeit für den Bootswechsel. Abschaltbar, wenn eine Reihenfolge bewusst genau so gewollt ist. |
+| V-8  | Die Vorschau der Startfolge zeigt **alle** Starts eines Laufs – gerade das Ende ist die interessante Stelle, weil dort der unverzahnte Block steht. |
 
 ## 7. Betrieb am Steg
 
@@ -137,18 +138,21 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | B-6  | **Meldungen** (Störung, Pause, freier Text) setzt und löscht das Stegpersonal selbst.             |
 | B-7  | Die geplante Liste folgt der Wirklichkeit: Was gezeigt wurde, bleibt in der Historie – unabhängig davon, wie umsortiert wurde. |
 | B-8  | Für wiederkehrende Meldungen gibt es **Vorlagen** (Begrüßung, Dank, Pause, Störung) mit Platzhalter für den Veranstaltungsnamen. Sie landen zuerst im Eingabefeld, nicht direkt auf der Tafel. |
+| B-9  | Eine **Klasse setzt aus**, wenn ihr Boot ausfällt: Sie wird grau dargestellt und startet nicht mehr – unabhängig von jeder Einstellung. „Andere Klassen vorziehen" entscheidet nur, ob die übrigen auf die freigewordenen Plätze aufrücken (siehe V-5). Je Klasse steht dabei, wie viele Starter noch ausstehen, und darunter die Folge, in der die Starts jetzt tatsächlich drankommen. |
+| B-10 | Die Klassen stehen in der Reihenfolge, in der sie drankommen, und lassen sich per **Drag & Drop vorziehen**. Umsortiert wird dabei **innerhalb der Spuren**: Der Wechsel-Faktor gilt weiter, zwischen zwei Starts wechselt weiter die Spur. Eine Klasse, die ihre Spur für sich hat, lässt sich folglich nicht vorziehen – ihre Plätze gehören ihr ohnehin alle. |
 
 ## 8. Öffentliche Startliste
 
 | Nr.  | Anforderung                                                                                     |
 | ---- | ------------------------------------------------------------------------------------------------- |
 | L-1  | Zeigt, wer gerade dran ist und wer folgt – je Parcours, filterbar nach Klasse.                     |
-| L-2  | Nennt für jeden offenen Start eine **geschätzte Wartezeit**.                                       |
-| L-3  | Die Startabstände werden **je Klasse gemessen** (Klasse E braucht länger als Klasse 7).             |
-| L-4  | Ausreißer (Pause, Störung, Mittag) verfälschen den Schnitt nicht.                                  |
-| L-5  | Vor dem ersten Start zählen **vorkonfigurierte** Werte aus früheren Veranstaltungen.                |
+| L-2  | Nennt für jeden offenen Start des **gerade gefahrenen Laufs** eine geschätzte Wartezeit. Für einen späteren Lauf steht der Beginn noch gar nicht fest – dort bleibt die Spalte leer statt eine Zahl zu erfinden. |
+| L-3  | Die Startabstände werden **je Klasse gemessen**: Klasse 1 fährt am schnellsten, danach wird es klassenweise langsamer; Klasse E fällt heraus – kurze Bahn, aber mehr Zeit am Steg. |
+| L-4  | Ausreißer verfälschen den Schnitt nicht – weder nach oben (Pause, Störung, Mittag) noch nach unten: Abstände unter 30 s entstehen beim Durchklicken und sind nie ein echter Lauf. |
+| L-5  | Vor dem ersten Start zählen **vorkonfigurierte** Werte aus früheren Veranstaltungen. Ausgeliefert werden die der **DM 2025**: mittlere Fahrzeit je Klasse aus den Ergebnislisten (alle drei Läufe) plus 30 s für den Bootswechsel. |
 | L-6  | Die gemessenen Werte lassen sich als Vorgabe für das nächste Mal übernehmen.                       |
-| L-7  | Je nach Einstellung ohne Anmeldung einsehbar.                                                      |
+| L-7  | Starts einer **ausgesetzten Klasse** stehen am Ende des Laufs und tragen statt einer Wartezeit den Hinweis „Boot fehlt" – eine hochgerechnete Zahl wäre dort schlicht falsch. |
+| L-8  | Je nach Einstellung ohne Anmeldung einsehbar.                                                      |
 
 ## 9. Pro-Version: mobile Bedienung
 

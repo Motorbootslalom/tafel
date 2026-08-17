@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import type { BoardMessage, Parcours, ParcoursRuntime, StartSlot } from '../types'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import draggable from 'vuedraggable'
+import type { BoardMessage, ClassId, Parcours, ParcoursRuntime, StartSlot } from '../types'
 import { useStore } from '../state/store'
-import { classColor } from '../lib/classes'
+import { classColor, classOrder } from '../lib/classes'
 import { EVENT_PLACEHOLDER, MESSAGE_GROUPS, fillTemplate } from '../data/messages'
 import {
+  classesByNextStart,
   currentSlot,
   deferredSlots,
+  isClassPaused,
   laufComplete,
   nextReleasableLauf,
   nextSlot,
   previousSlot,
   releasedSlots,
+  startableSlots,
 } from '../lib/startlist'
 import { formatDuration } from '../lib/timing'
 
@@ -25,6 +29,17 @@ function label(slot: StartSlot | null | undefined): string {
   const s = store.starterById(slot.starterId)
   if (!s) return '?'
   return `${s.startNr} · ${s.vorname} ${s.nachname}`.trim()
+}
+
+/**
+ * Wie {@link label}, aber mit der Klasse. Beim Starter davor ist sie die
+ * eigentliche Information: Daran hängt, welches Boot gerade zurückkommt.
+ */
+function labelWithClass(slot: StartSlot | null | undefined): string {
+  if (!slot) return '–'
+  const s = store.starterById(slot.starterId)
+  if (!s) return '?'
+  return `${s.startNr} · Klasse ${s.klasse} · ${s.vorname} ${s.nachname}`.trim()
 }
 
 function starterOf(slot: StartSlot) {
@@ -48,7 +63,7 @@ function details(slot: StartSlot | null | undefined): string {
 
 const current = computed(() => currentSlot(props.runtime))
 const previous = computed(() => previousSlot(props.runtime))
-const next = computed(() => nextSlot(props.runtime))
+const next = computed(() => nextSlot(props.runtime, store.klasseOf))
 const deferred = computed(() => deferredSlots(props.runtime))
 const upcoming = computed(() => releasedSlots(props.runtime).slice(0, 12))
 
@@ -81,15 +96,102 @@ onUnmounted(() => {
   if (ticker) clearInterval(ticker)
 })
 
-/** Klassen, die im freigegebenen Lauf noch offene Starts haben. */
-const openClasses = computed(() => {
-  const seen = new Set<string>()
+interface KlassenEintrag {
+  klasse: ClassId
+  offen: number
+  paused: boolean
+}
+
+/**
+ * Klassen, die im freigegebenen Lauf noch offene Starts haben – mit der Zahl
+ * der ausstehenden Starter. Genau daran entscheidet sich am Steg, ob es sich
+ * lohnt, eine Klasse aussetzen zu lassen.
+ *
+ * Sortiert nach dem **nächsten Start**, nicht kanonisch: Am Steg zählt, was als
+ * Nächstes kommt. Damit hat auch die Position in der Reihe eine Bedeutung – und
+ * genau daran wird gezogen, um eine Klasse vorzuziehen.
+ */
+const openClasses = computed<KlassenEintrag[]>(() => {
+  const counts = new Map<ClassId, number>()
   for (const slot of releasedSlots(props.runtime)) {
     const klasse = store.klasseOf(slot.starterId)
-    if (klasse) seen.add(klasse)
+    if (klasse) counts.set(klasse, (counts.get(klasse) ?? 0) + 1)
   }
-  return [...seen]
+  // Ausgesetzte Klassen bleiben in der Liste, auch wenn ihr letzter Start schon
+  // gefahren ist – sonst ließe sich das Aussetzen nicht mehr zurücknehmen.
+  for (const klasse of props.runtime.pausedClasses) {
+    if (!counts.has(klasse)) counts.set(klasse, 0)
+  }
+
+  const reihenfolge = classesByNextStart(props.runtime, store.klasseOf)
+  const rang = (klasse: ClassId) => {
+    const i = reihenfolge.indexOf(klasse)
+    // Wer gar nicht mehr vorkommt (ausgesetzt und schon abgeräumt), hinten dran.
+    return i < 0 ? reihenfolge.length + classOrder(klasse) : i
+  }
+
+  return [...counts.entries()]
+    .map(([klasse, offen]) => ({ klasse, offen, paused: isClassPaused(props.runtime, klasse) }))
+    .sort((a, b) => rang(a.klasse) - rang(b.klasse))
 })
+
+/**
+ * Arbeitskopie für das Ziehen. Drag & Drop verändert die Liste an Ort und
+ * Stelle; übernommen wird erst beim Loslassen.
+ */
+const klassenReihe = ref<KlassenEintrag[]>([])
+watch(openClasses, (value) => (klassenReihe.value = [...value]), { immediate: true })
+
+/**
+ * Nach dem Loslassen: Die gezogene Klasse kommt dort dran, wo bisher die Klasse
+ * dahinter dran war. Ganz nach hinten gezogen heißt „ans Ende".
+ */
+function onKlasseDrop(event: { oldIndex?: number; newIndex?: number }): void {
+  const { oldIndex, newIndex } = event
+  if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
+  const gezogen = klassenReihe.value[newIndex]
+  if (!gezogen) return
+
+  const dahinter = klassenReihe.value.slice(newIndex + 1).find((e) => !e.paused)
+  void nextTick(() =>
+    store.dispatch({
+      type: 'MOVE_CLASS_BEFORE',
+      parcoursId: parcoursId.value,
+      klasse: gezogen.klasse,
+      before: dahinter?.klasse ?? null,
+    }),
+  )
+}
+
+const pausedClasses = computed(() => openClasses.value.filter((c) => c.paused))
+
+/**
+ * Die nächsten Starts in der Reihenfolge, in der sie tatsächlich drankommen.
+ * Gekürzt, weil am Steg meist ein Handy in der Hand liegt – die vollständige
+ * Folge steht in der Verwaltung.
+ */
+const VORSCHAU_LAENGE = 16
+const startbar = computed(() => startableSlots(props.runtime, store.klasseOf))
+const vorschau = computed(() =>
+  startbar.value
+    .slice(0, VORSCHAU_LAENGE)
+    .map((slot) => ({ id: slot.id, klasse: store.klasseOf(slot.starterId) })),
+)
+const vorschauGekuerzt = computed(() => startbar.value.length > VORSCHAU_LAENGE)
+
+/**
+ * Es stehen noch Starts aus, aber keiner davon ist gerade fahrbar – alle
+ * gehören zu ausgesetzten Klassen. Das ist etwas anderes als „Lauf ist durch".
+ */
+const alleAusgesetzt = computed(() => !next.value && !laufComplete(props.runtime))
+
+function setClassPaused(klasse: ClassId, paused: boolean): void {
+  store.dispatch({ type: 'SET_CLASS_PAUSED', parcoursId: parcoursId.value, klasse, paused })
+}
+
+function setPullForward(pullForward: boolean): void {
+  store.dispatch({ type: 'SET_PULL_FORWARD', parcoursId: parcoursId.value, pullForward })
+}
 
 const chooserOpen = ref(false)
 const messageText = ref('')
@@ -118,15 +220,6 @@ function deferNext(): void {
 
 function reactivate(slotId: string, where: 'next' | 'end'): void {
   store.dispatch({ type: 'REACTIVATE_SLOT', parcoursId: parcoursId.value, slotId, where })
-}
-
-function shift(klasse: string, steps: number): void {
-  store.dispatch({
-    type: 'SHIFT_CLASS',
-    parcoursId: parcoursId.value,
-    klasse: klasse as never,
-    steps,
-  })
 }
 
 function setMessage(text: string, kind: BoardMessage['kind']): void {
@@ -206,13 +299,16 @@ function sendFreeMessage(): void {
         </template>
         <template v-else>Noch kein Starter angezeigt</template>
       </span>
-      <span v-if="previous" class="small dim">davor: {{ label(previous) }}</span>
+      <span v-if="previous" class="small dim">davor: {{ labelWithClass(previous) }}</span>
     </div>
 
     <div class="steg-next">
       <span class="dim small">Als Nächstes</span>
       <span class="next-name">{{ label(next) }}</span>
       <span v-if="next" class="dim small">{{ details(next) }}</span>
+      <span v-else-if="alleAusgesetzt" class="dim small warn">
+        Alle verbleibenden Starts gehören zu ausgesetzten Klassen.
+      </span>
       <span v-else-if="naechsterLauf !== null" class="dim small">
         erst nach Freigabe von Lauf {{ naechsterLauf }}
       </span>
@@ -266,19 +362,112 @@ function sendFreeMessage(): void {
       weitergeschaltet, und alles Weitere kostete sonst dauerhaft Bildschirmhöhe
       – am Steg wird sonst bei jedem Starter gescrollt.
     -->
+    <!--
+      Der Fall „Boot defekt": Die Klasse setzt aus, die anderen fahren weiter.
+      Bewusst kein Verschieben um einzelne Plätze mehr – am Steg wird nicht
+      gerechnet, sondern eine Klasse an- oder abgeschaltet. Was das für die
+      Reihenfolge bedeutet, steht als Vorschau darunter; ohne sie sah es aus,
+      als passiere gar nichts.
+    -->
     <details class="steg-section">
-      <summary>Verzahnung verschieben</summary>
-      <p class="hint">
-        Wenn das Boot einer Klasse ausfällt: Klasse nach hinten schieben, eine andere springt ein.
-        Sobald das Boot wieder da ist, wieder nach vorn holen.
-      </p>
-      <div class="row">
-        <span v-for="klasse in openClasses" :key="klasse" class="row-tight shift">
-          <span class="badge" :style="{ background: classColor(klasse as never) }">{{ klasse }}</span>
-          <button :disabled="!mayOperate" title="nach vorn" @click="shift(klasse, -1)">◀</button>
-          <button :disabled="!mayOperate" title="nach hinten" @click="shift(klasse, 1)">▶</button>
+      <summary>
+        Klassen aussetzen
+        <span v-if="pausedClasses.length" class="aktiv stoerung">
+          setzt aus: {{ pausedClasses.map((c) => c.klasse).join(', ') }}
         </span>
-        <span v-if="!openClasses.length" class="dim small">Keine offenen Starts mehr.</span>
+      </summary>
+
+      <p class="hint">
+        Fällt ein Boot aus, die Klasse antippen – sie wird grau und startet vorerst nicht. Sobald
+        das Boot wieder da ist, erneut antippen: Der Rest des Laufs wird dann wieder mit ihr
+        verzahnt. Die Klassen stehen in der Reihenfolge, in der sie drankommen; am Griff
+        <span class="grip-demo">⠿</span> lässt sich eine Klasse nach vorn ziehen.
+      </p>
+
+      <draggable
+        v-model="klassenReihe"
+        :item-key="(eintrag: KlassenEintrag) => eintrag.klasse"
+        class="row klassen"
+        handle=".klasse-grip"
+        ghost-class="klasse-ghost"
+        :animation="150"
+        :delay="120"
+        :delay-on-touch-only="true"
+        :force-fallback="true"
+        @end="onKlasseDrop"
+      >
+        <template #item="{ element: eintrag }">
+          <span
+            class="klasse-toggle"
+            :class="{ aus: eintrag.paused }"
+            :style="eintrag.paused ? undefined : { borderColor: classColor(eintrag.klasse) }"
+          >
+            <span
+              class="klasse-grip"
+              :class="{ locked: !mayOperate || eintrag.paused }"
+              :title="eintrag.paused ? 'setzt aus – fährt nicht' : 'nach vorn ziehen'"
+              >⠿</span
+            >
+            <button
+              class="klasse-schalter"
+              :disabled="!mayOperate"
+              :title="eintrag.paused ? 'wieder mitfahren lassen' : 'aussetzen lassen'"
+              @click="setClassPaused(eintrag.klasse, !eintrag.paused)"
+            >
+              <span
+                class="badge"
+                :style="{
+                  background: eintrag.paused ? 'var(--text-dim)' : classColor(eintrag.klasse),
+                }"
+              >
+                {{ eintrag.klasse }}
+              </span>
+              <span class="small">noch {{ eintrag.offen }}</span>
+              <span v-if="eintrag.paused" class="small warn">setzt aus</span>
+            </button>
+          </span>
+        </template>
+
+        <template #footer>
+          <span v-if="!klassenReihe.length" class="dim small">Keine offenen Starts mehr.</span>
+        </template>
+      </draggable>
+
+      <label class="row-tight small vorziehen">
+        <input
+          type="checkbox"
+          :checked="runtime.pullForward"
+          :disabled="!mayOperate"
+          @change="setPullForward(($event.target as HTMLInputElement).checked)"
+        />
+        Andere Klassen vorziehen
+      </label>
+      <p class="hint" style="margin: 0.2rem 0 0">
+        Eine ausgesetzte Klasse startet so oder so nicht – die Einstellung entscheidet nur, was mit
+        ihren Plätzen geschieht.
+        <template v-if="runtime.pullForward">
+          Die nächste Klasse derselben Spur rückt auf: Der Wechsel zwischen den Spuren bleibt
+          erhalten, am Steg bleibt Zeit für den Bootswechsel.
+        </template>
+        <template v-else>
+          Die Lücken schließen sich einfach – danach folgen mehrere Starter derselben Klasse
+          aufeinander.
+        </template>
+      </p>
+
+      <div v-if="vorschau.length" class="vorschau">
+        <span class="small dim">So kommen die Starts jetzt dran:</span>
+        <div class="row-tight folge">
+          <span
+            v-for="eintrag in vorschau"
+            :key="eintrag.id"
+            class="badge"
+            :style="{ background: eintrag.klasse ? classColor(eintrag.klasse) : 'var(--text-dim)' }"
+          >
+            {{ eintrag.klasse ?? '?' }}
+          </span>
+          <span v-if="vorschauGekuerzt" class="dim small">…</span>
+        </div>
       </div>
     </details>
 
@@ -292,7 +481,7 @@ function sendFreeMessage(): void {
       </summary>
 
       <div class="row">
-      <button :disabled="!mayOperate" @click="setMessage('Kurze Störung – bitte warten', 'stoerung')">
+      <button :disabled="!mayOperate" @click="setMessage('Kurze Störung – gleich geht es weiter', 'stoerung')">
         Störung
       </button>
       <button :disabled="!mayOperate" @click="setMessage('Kurze Pause', 'pause')">Pause</button>
@@ -450,9 +639,79 @@ function sendFreeMessage(): void {
   min-width: 8rem;
 }
 
-.shift {
-  padding: 0.2rem 0.4rem;
+/* Große Flächen: Am Steg wird oft mit nassen oder behandschuhten Fingern getippt. */
+.klassen {
+  align-items: stretch;
+}
+
+.klasse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+/* Grau heißt: fährt gerade nicht. Das muss auch aus dem Augenwinkel zu sehen sein. */
+.klasse-toggle.aus {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+/* Der Schalter füllt den Chip aus, damit auch mit Handschuhen sicher zu treffen. */
+.klasse-schalter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  background: none;
+  padding: 0.1rem 0.15rem;
+}
+
+.klasse-grip,
+.grip-demo {
+  color: var(--text-dim);
+  line-height: 1;
+  user-select: none;
+}
+
+.klasse-grip {
+  cursor: grab;
+  padding: 0 0.1rem;
+}
+
+.klasse-grip:active {
+  cursor: grabbing;
+}
+
+/* Eine ausgesetzte Klasse fährt nicht – ihre Position sagt daher nichts aus. */
+.klasse-grip.locked {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.klasse-ghost {
+  opacity: 0.4;
+  outline: 2px dashed var(--accent);
+}
+
+.vorziehen {
+  margin-top: 0.6rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
+  align-self: flex-start;
+}
+
+.vorschau {
+  margin-top: 0.6rem;
+}
+
+.folge {
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 0.2rem;
 }
 </style>

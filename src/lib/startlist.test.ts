@@ -19,14 +19,18 @@ import {
   pendingSlots,
   previousSlot,
   pruneSlots,
+  classesByNextStart,
+  moveClassBefore,
   reactivateSlot,
+  reinterleaveOpen,
   removeSlot,
-  shiftClass,
+  setClassPaused,
   showSlot,
+  startableSlots,
   undoLast,
 } from './startlist'
 import { klasseLookup, parcours, starters } from './testing'
-import type { ParcoursRuntime, Starter } from '../types'
+import type { ParcoursRuntime, Starter, TrackItem } from '../types'
 
 function setup(counts: Parameters<typeof starters>[0], laufCount = 1) {
   const list = starters(counts)
@@ -142,33 +146,194 @@ describe('showSlot', () => {
   })
 })
 
-describe('shiftClass', () => {
-  it('verschiebt eine Klasse in der Verzahnung nach hinten', () => {
-    const { rt, list, klasseOf } = setup({ E: 3, '1': 3 })
-    expect(pattern(rt, list)).toBe('E1E1E1')
-    const after = shiftClass(rt, 'E', klasseOf, 1)
-    expect(pattern(after, list)).toBe('1E1E1E')
+describe('Klassen vorziehen', () => {
+  /**
+   * Drei Klassen auf zwei Spuren: Klasse 1 fährt allein auf Spur 1, E und 2
+   * teilen sich Spur 2. Dadurch steht am Ende ein unverzahnter Block aus Klasse
+   * 2 – genau die Stelle, an der das Vorziehen am Steg gebraucht wird.
+   */
+  const SPUREN: TrackItem[][] = [
+    [{ kind: 'class', klasse: '1' }],
+    [
+      { kind: 'class', klasse: 'E' },
+      { kind: 'class', klasse: '2' },
+    ],
+  ]
+  const drei = (laufCount = 1) => setup({ E: 3, '1': 3, '2': 3 }, laufCount)
+
+  it('führt die Klassen in der Reihenfolge ihres nächsten Starts', () => {
+    // Nicht kanonisch sortiert: Am Steg zählt, was als Nächstes kommt.
+    const { rt, list, klasseOf } = drei()
+    expect(pattern(rt, list)).toBe('1E1E1E222')
+    expect(classesByNextStart(rt, klasseOf)).toEqual(['1', 'E', '2'])
   })
 
-  it('verschiebt eine Klasse wieder nach vorn', () => {
-    const { rt, list, klasseOf } = setup({ E: 3, '1': 3 })
-    const back = shiftClass(rt, 'E', klasseOf, 1)
-    expect(pattern(shiftClass(back, 'E', klasseOf, -1), list)).toBe('E1E1E1')
+  it('macht die gezogene Klasse zur nächsten – ohne die Spuren aufzugeben', () => {
+    const { rt, list, klasseOf } = drei()
+    const after = moveClassBefore(rt, '2', '1', SPUREN, klasseOf)
+
+    // Klasse 2 zuerst, Klasse E rutscht in ihrer Spur dahinter. Der Wechsel
+    // zwischen den beiden Spuren bleibt dabei erhalten – bei zwei Spuren darf
+    // die Folge nicht plötzlich durch alle Klassen reihum laufen.
+    expect(pattern(after, list)).toBe('212121EEE')
+    expect(classesByNextStart(after, klasseOf)).toEqual(['2', '1', 'E'])
   })
 
-  it('lässt bereits gefahrene Starter unangetastet', () => {
+  it('schiebt eine Klasse innerhalb ihrer Spur nach hinten', () => {
+    const { rt, list, klasseOf } = drei()
+    expect(pattern(moveClassBefore(rt, 'E', null, SPUREN, klasseOf), list)).toBe('121212EEE')
+  })
+
+  it('lässt bei einer allein fahrenden Klasse die andere Spur beginnen', () => {
+    // Klasse 1 hat Spur 1 für sich – innerhalb ihrer Spur ist nichts zu
+    // verschieben. Zurückgestellt heißt hier deshalb: Der Reigen beginnt bei der
+    // anderen Spur, Klasse E kommt zuerst dran.
+    const { rt, list, klasseOf } = drei()
+    expect(pattern(moveClassBefore(rt, '1', null, SPUREN, klasseOf), list)).toBe('E1E1E1222')
+  })
+
+  it('lässt gefahrene Starts und die Historie unangetastet', () => {
+    const { rt, klasseOf } = drei()
+    const running = advance(advance(rt, 1000, klasseOf), 2000, klasseOf)
+    const after = moveClassBefore(running, '2', '1', SPUREN, klasseOf)
+
+    expect(after.slots.slice(0, 2).map((s) => s.id)).toEqual(
+      running.slots.slice(0, 2).map((s) => s.id),
+    )
+    expect(after.history).toEqual(running.history)
+    expect(after.slots).toHaveLength(rt.slots.length)
+  })
+
+  it('rührt die Plätze einer ausgesetzten Klasse nicht an', () => {
+    const { rt, klasseOf } = drei()
+    const aus = setClassPaused(rt, 'E', true)
+    const vorher = aus.slots.filter((s) => klasseOf(s.starterId) === 'E').map((s) => s.id)
+
+    const after = moveClassBefore(aus, '2', '1', SPUREN, klasseOf)
+    expect(after.slots.filter((s) => klasseOf(s.starterId) === 'E').map((s) => s.id)).toEqual(vorher)
+    expect(startableSlots(after, klasseOf).map((s) => klasseOf(s.starterId)).join('')).toBe('212121')
+  })
+
+  it('rührt einen späteren Lauf nicht an', () => {
+    const { rt, list, klasseOf } = drei(2)
+    const after = moveClassBefore(rt, '2', '1', SPUREN, klasseOf)
+    const imLauf = (r: ParcoursRuntime, lauf: number) =>
+      pattern({ ...r, slots: r.slots.filter((s) => s.lauf === lauf) }, list)
+
+    expect(imLauf(after, 1)).toBe('212121EEE')
+    expect(imLauf(after, 2)).toBe(imLauf(rt, 2))
+  })
+
+  it('tut nichts, wenn die Klasse schon dort steht', () => {
+    const { rt, klasseOf } = drei()
+    expect(moveClassBefore(rt, 'E', 'E', SPUREN, klasseOf)).toBe(rt)
+    expect(moveClassBefore(rt, '1', 'E', SPUREN, klasseOf)).toBe(rt)
+  })
+})
+
+describe('Klasse setzt aus', () => {
+  /** Spur-Anordnung wie bei zwei Klassen auf zwei Spuren. */
+  const zweiSpuren: TrackItem[][] = [
+    [{ kind: 'class', klasse: 'E' }],
+    [{ kind: 'class', klasse: '1' }],
+  ]
+
+  it('überspringt die ausgesetzte Klasse in jedem Fall', () => {
+    // Ein fehlendes Boot fährt nicht – gleich, wie der Parcours eingestellt ist.
+    for (const pullForward of [true, false]) {
+      const { rt, klasseOf } = setup({ E: 3, '1': 3 })
+      const aus = setClassPaused({ ...rt, pullForward }, 'E', true)
+
+      expect(klasseOf(nextSlot(aus, klasseOf)!.starterId), String(pullForward)).toBe('1')
+      expect(startableSlots(aus, klasseOf)).toHaveLength(3)
+      // Umsortiert wird dabei nichts – das ist Sache von `reinterleaveOpen`.
+      expect(aus.slots).toEqual(rt.slots)
+    }
+  })
+
+  it('meldet den Lauf nicht als durch, solange eine Klasse aussetzt', () => {
+    const { rt, klasseOf } = setup({ E: 2 })
+    const aus = setClassPaused(rt, 'E', true)
+    expect(nextSlot(aus, klasseOf)).toBeNull()
+    // Es stehen noch Starts aus – der Lauf stockt, er ist nicht fertig.
+    expect(laufComplete(aus)).toBe(false)
+  })
+
+  it('lässt die nächste Klasse derselben Spur auf die freien Plätze aufrücken', () => {
+    // Der Fall aus dem Betrieb: Spur 1 fährt E, dann 1, dann 3; Spur 2 fährt 2,
+    // dann 6. Fällt das Boot der Klasse 2 aus, muss die Klasse 6 – die nächste
+    // in derselben Spur – auf deren Plätze rücken, sonst bricht der Wechsel
+    // zwischen den Spuren zusammen.
+    const list = starters({ E: 2, '1': 6, '2': 6, '3': 1, '6': 2 })
+    const tracks: TrackItem[][] = [
+      [
+        { kind: 'class', klasse: 'E' },
+        { kind: 'class', klasse: '1' },
+        { kind: 'class', klasse: '3' },
+      ],
+      [
+        { kind: 'class', klasse: '2' },
+        { kind: 'class', klasse: '6' },
+      ],
+    ]
+    const p = { ...parcours(['E', '1', '2', '3', '6']), tracks }
+    const klasseOf = klasseLookup(list)
+    const rt: ParcoursRuntime = { ...emptyRuntime(p.id), slots: generateSlots(p, list, 1) }
+    expect(pattern(rt, list)).toBe('E2E21212121216163')
+
+    const folge = (r: ParcoursRuntime) =>
+      startableSlots(r, klasseOf)
+        .map((s) => klasseOf(s.starterId))
+        .join('')
+
+    const aus = setClassPaused(rt, '2', true)
+    // Ohne Vorziehen: Die Lücken schließen sich, sonst ändert sich nichts.
+    expect(folge(aus)).toBe('EE111116163')
+
+    // Mit Vorziehen: Klasse 6 übernimmt die Plätze der Klasse 2.
+    const vorgezogen = reinterleaveOpen(aus, tracks, klasseOf)
+    expect(folge(vorgezogen)).toBe('E6E61111113')
+
+    // Und die geplante Liste sagt dasselbe: Die ausgesetzte Klasse steht am Ende
+    // des Laufs. Zwischen den anderen sähe es aus, als sei die falsche Klasse
+    // herausgenommen worden.
+    expect(pattern(vorgezogen, list)).toBe('E6E61111113' + '222222')
+  })
+
+  it('webt die Klasse beim Zurückkommen wieder in den Rest des Laufs ein', () => {
+    const { rt, list, klasseOf } = setup({ E: 3, '1': 3 })
+    let running = setClassPaused(rt, 'E', true)
+    // Zwei Starts der Klasse 1 gefahren, während E aussetzt.
+    running = advance(advance(running, 1000, klasseOf), 2000, klasseOf)
+    expect(pattern(running, list)).toBe('11EEE1')
+
+    const zurueck = reinterleaveOpen(setClassPaused(running, 'E', false), zweiSpuren, klasseOf)
+    // Ohne Neu-Verzahnung führen jetzt drei E am Stück – am Steg fehlte dann
+    // durchgehend die Zeit für den Bootswechsel.
+    expect(pattern(zurueck, list)).toBe('11E1EE')
+  })
+
+  it('lässt gefahrene Starts und die Historie unangetastet', () => {
     const { rt, klasseOf } = setup({ E: 3, '1': 3 })
-    const running = advance(advance(rt, 1000), 2000)
-    const after = shiftClass(running, 'E', klasseOf, 1)
+    const running = advance(advance(rt, 1000, klasseOf), 2000, klasseOf)
+    const after = reinterleaveOpen(running, zweiSpuren, klasseOf)
+
     expect(after.slots.slice(0, 2).map((s) => s.id)).toEqual([rt.slots[0].id, rt.slots[1].id])
     expect(after.history).toEqual(running.history)
+    expect(after.slots).toHaveLength(rt.slots.length)
   })
 
-  it('läuft am Ende der Liste nicht über', () => {
-    const { rt, list, klasseOf } = setup({ E: 2, '1': 2 })
-    const after = shiftClass(rt, 'E', klasseOf, 99)
-    expect(after.slots).toHaveLength(4)
-    expect(pattern(after, list)).toBe('11EE')
+  it('vermischt die Läufe nicht', () => {
+    const { rt, list, klasseOf } = setup({ E: 3, '1': 3 }, 2)
+    // Beide Läufe freigegeben – der zweite darf trotzdem nicht in den ersten rutschen.
+    const after = reinterleaveOpen({ ...rt, releasedLauf: 2 }, zweiSpuren, klasseOf)
+
+    const byId = new Map(list.map((s) => [s.id, s]))
+    const muster = (lauf: number) =>
+      after.slots.filter((s) => s.lauf === lauf).map((s) => byId.get(s.starterId)?.klasse).join('')
+
+    expect(muster(1)).toBe('E1E1E1')
+    expect(muster(2)).toBe('E1E1E1')
   })
 })
 
@@ -244,17 +409,22 @@ describe('Lauf-Freigabe', () => {
     expect(releaseLauf(rt, -5).releasedLauf).toBe(1)
   })
 
-  it('verschiebt eine Klasse nur innerhalb des freigegebenen Laufs', () => {
+  it('verzahnt einen gesperrten Lauf nicht neu', () => {
     const { rt, list, klasseOf } = setup({ E: 3, '1': 3 }, 2)
-    const after = shiftClass(rt, 'E', klasseOf, 1)
+    // Lauf 2 ist noch gesperrt – was dort steht, geht das ausgefallene Boot von
+    // jetzt nichts an.
+    const gemischt: ParcoursRuntime = {
+      ...rt,
+      slots: [...rt.slots.slice(0, 6), ...[...rt.slots.slice(6)].reverse()],
+    }
+    const after = reinterleaveOpen(gemischt, [[{ kind: 'class', klasse: 'E' }], [{ kind: 'class', klasse: '1' }]], klasseOf)
 
     const byId = new Map(list.map((s) => [s.id, s]))
     const muster = (lauf: number) =>
       after.slots.filter((s) => s.lauf === lauf).map((s) => byId.get(s.starterId)?.klasse).join('')
 
-    expect(muster(1)).toBe('1E1E1E')
-    // Lauf 2 ist noch gesperrt und bleibt unangetastet.
-    expect(muster(2)).toBe('E1E1E1')
+    expect(muster(1)).toBe('E1E1E1')
+    expect(muster(2)).toBe('1E1E1E')
   })
 })
 

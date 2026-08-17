@@ -73,6 +73,40 @@ describe('buildSequence', () => {
     expect(classPattern(buildSequence(tracks, startersByClass(list)))).toBe('EEE111')
   })
 
+  it('versetzt mit einer Pause zwischen zwei Klassen nur deren Übergang', () => {
+    const list = starters({ E: 2, '1': 2, '2': 6 })
+    const ohne: TrackItem[][] = [
+      [
+        { kind: 'class', klasse: 'E' },
+        { kind: 'class', klasse: '1' },
+      ],
+      [{ kind: 'class', klasse: '2' }],
+    ]
+    const mit: TrackItem[][] = [
+      [
+        { kind: 'class', klasse: 'E' },
+        { kind: 'pause', id: 'pause1', length: 1 },
+        { kind: 'class', klasse: '1' },
+      ],
+      [{ kind: 'class', klasse: '2' }],
+    ]
+
+    // Der Anfang der Spur bleibt stehen, erst ab der Pause verschiebt sich alles.
+    expect(classPattern(buildSequence(ohne, startersByClass(list)))).toBe('E2E2121222')
+    expect(classPattern(buildSequence(mit, startersByClass(list)))).toBe('E2E2212122')
+  })
+
+  it('setzt den Reigen auf Wunsch bei einer späteren Spur ein', () => {
+    // Beim Neu-Verzahnen mitten im Lauf: Nach einem Starter aus Spur 1 muss
+    // Spur 2 an die Reihe kommen, sonst stünden zwei aus derselben Spur nebeneinander.
+    const list = starters({ E: 2, '1': 2 })
+    const tracks: TrackItem[][] = [
+      [{ kind: 'class', klasse: 'E' }],
+      [{ kind: 'class', klasse: '1' }],
+    ]
+    expect(classPattern(buildSequence(tracks, startersByClass(list), 1))).toBe('1E1E')
+  })
+
   it('lässt leere Spuren einfach aus', () => {
     const list = starters({ E: 2 })
     const tracks: TrackItem[][] = [[{ kind: 'class', klasse: 'E' }], []]

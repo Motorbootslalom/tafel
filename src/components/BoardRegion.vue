@@ -78,6 +78,17 @@ const swapKey = computed(() =>
     -->
     <div :key="swapKey" v-fit-block class="region-content" :class="{ stacked }">
         <template v-if="messageReplaces">
+          <!--
+            Der Parcours-Name bleibt auch bei Störung und Pause stehen. Bei zwei
+            Parcours ist er die einzige Zuordnung, welcher Block zu welchem
+            Bereich des Sees gehört – fiele er weg, stünde dort eine Meldung, von
+            der niemand wüsste, für welchen Parcours sie gilt.
+          -->
+          <div v-if="showParcoursName && parcours.name" v-fit class="board-line board-meta">
+            <span class="parcours">{{ parcours.name }}</span>
+            <span class="middle"></span>
+            <span></span>
+          </div>
           <div v-fit class="board-line board-message" :class="message!.kind">
             {{ message!.text }}
           </div>
@@ -112,8 +123,13 @@ const swapKey = computed(() =>
             <div class="board-info">
               <div v-fit class="board-line board-name">{{ current.name }}</div>
               <div v-fit class="board-line board-origin">{{ current.origin }}</div>
+              <!--
+                Mit Klasse: Am Steg und an der Strecke wird daran abgelesen,
+                welches Boot gerade zurückkommt – die Nummer allein sagt das
+                niemandem, der die Startliste nicht auswendig kennt.
+              -->
               <div v-if="board.showPrevious && previous" v-fit class="board-line board-previous">
-                davor: {{ previous.startNr }} · {{ previous.name }}
+                davor: {{ previous.startNr }} · Klasse {{ previous.klasse }} · {{ previous.name }}
               </div>
             </div>
           </div>

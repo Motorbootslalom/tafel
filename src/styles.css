@@ -651,6 +651,18 @@ th {
   padding: 1rem 0.75rem;
   font-size: 1rem;
   font-weight: 600;
+  /*
+   * Umbruch erlaubt – anders als bei Knöpfen sonst.
+   *
+   * Die Beschriftungen sind lang („Nächsten zurückstellen"), die Spalten dürfen
+   * aber schmal werden. Mit dem sonst üblichen `nowrap` lief der Text bei
+   * mittlerer Fensterbreite aus seiner Fläche heraus und schob sich über den
+   * Nachbarknopf. Umgebrochen bleibt jeder Knopf in seiner Spalte; alle behalten
+   * dieselbe Höhe, weil das Raster sie streckt.
+   */
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
 }
 
 /* --- Pairing ------------------------------------------------------------- */

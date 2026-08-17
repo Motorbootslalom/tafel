@@ -4,7 +4,7 @@ import draggable from 'vuedraggable'
 import type { ClassId, Parcours, TrackItem, WechselFaktor } from '../types'
 import { useStore } from '../state/store'
 import { classColor, CLASS_IDS } from '../lib/classes'
-import { analyzeSequence, computeVerzahnung, presentClasses } from '../lib/verzahnung'
+import { analyzeSequence, computeVerzahnung, itemDragId, presentClasses } from '../lib/verzahnung'
 import { uid } from '../lib/ids'
 
 /**
@@ -16,9 +16,12 @@ import { uid } from '../lib/ids'
  * Spur verschieben; die Reihenfolge innerhalb einer Spur bestimmt, welche
  * Klasse dort zuerst fährt.
  *
- * Zusätzlich lässt sich jeder Spur eine **Pause** voranstellen: Sie setzt die
- * Spur um so viele Takte aus und verschiebt damit die Verzahnung nach hinten,
- * ohne eine Lücke in der Startliste zu erzeugen.
+ * Zusätzlich lassen sich **Pausen** in eine Spur einfügen: Sie setzen die Spur
+ * um so viele Takte aus und verschieben alles, was in der Spur dahinter steht,
+ * nach hinten – ohne eine Lücke in der Startliste zu erzeugen. Eine Pause ist
+ * dabei ein Element wie eine Klasse und lässt sich ebenso an jede Stelle der
+ * Spur ziehen: an den Anfang, um die ganze Spur zu versetzen, oder zwischen zwei
+ * Klassen, um nur deren Übergang zu verschieben.
  */
 const props = defineProps<{ parcours: Parcours }>()
 const store = useStore()
@@ -31,31 +34,17 @@ const result = computed(() => computeVerzahnung(props.parcours, store.state.star
 const analysis = computed(() => analyzeSequence(result.value.sequence))
 const classes = computed(() => presentClasses(props.parcours, startersOfParcours.value))
 
-function pauseOf(trackIndex: number): number {
-  const first = result.value.tracks[trackIndex]?.[0]
-  return first && first.kind === 'pause' ? first.length : 0
-}
-
-function pauseIdOf(trackIndex: number): string | null {
-  const first = result.value.tracks[trackIndex]?.[0]
-  return first && first.kind === 'pause' ? first.id : null
-}
-
 /**
- * Arbeitskopie der Spuren, nur die Klassen. Drag & Drop verändert Arrays an
- * Ort und Stelle – deshalb braucht es eine eigene Liste, die anschließend als
- * Ganzes in den Zustand zurückgeschrieben wird.
+ * Arbeitskopie der Spuren mit allen Elementen – Klassen wie Pausen. Drag & Drop
+ * verändert Arrays an Ort und Stelle, deshalb braucht es eine eigene Liste, die
+ * anschließend als Ganzes in den Zustand zurückgeschrieben wird.
  */
-const localTracks = ref<ClassId[][]>([])
+const localTracks = ref<TrackItem[][]>([])
 
 watch(
   result,
   (value) => {
-    localTracks.value = value.tracks.map((track) =>
-      track
-        .filter((i): i is Extract<TrackItem, { kind: 'class' }> => i.kind === 'class')
-        .map((i) => i.klasse),
-    )
+    localTracks.value = value.tracks.map((track) => track.map((item) => ({ ...item })))
   },
   { immediate: true },
 )
@@ -68,15 +57,9 @@ function commit(tracks: TrackItem[][]): void {
   store.dispatch({ type: 'SET_TRACKS', parcoursId: props.parcours.id, tracks })
 }
 
-/** Arbeitskopie in den Zustand übernehmen; vorhandene Pausen bleiben vorn stehen. */
+/** Arbeitskopie in den Zustand übernehmen. */
 function commitLocal(): void {
-  const tracks: TrackItem[][] = localTracks.value.map((klassen, index) => {
-    const items: TrackItem[] = klassen.map((klasse) => ({ kind: 'class', klasse }))
-    const length = pauseOf(index)
-    if (length <= 0) return items
-    return [{ kind: 'pause', id: pauseIdOf(index) ?? uid('pause'), length }, ...items]
-  })
-  commit(tracks)
+  commit(localTracks.value.map((track) => track.map((item) => ({ ...item }))))
 }
 
 /**
@@ -88,23 +71,36 @@ function onDragEnd(): void {
   void nextTick(commitLocal)
 }
 
-/** Klasse eine Spur weiter – die Tastatur-/Touch-Alternative zum Ziehen. */
-function moveToTrack(from: number, klasse: ClassId, delta: number): void {
+/** Element eine Spur weiter – die Tastatur-/Touch-Alternative zum Ziehen. */
+function moveToTrack(from: number, item: TrackItem, delta: number): void {
   const to = from + delta
   if (to < 0 || to >= localTracks.value.length) return
-  localTracks.value[from] = localTracks.value[from].filter((k) => k !== klasse)
-  localTracks.value[to] = [...localTracks.value[to], klasse]
+  const id = itemDragId(item)
+  localTracks.value[from] = localTracks.value[from].filter((i) => itemDragId(i) !== id)
+  localTracks.value[to] = [...localTracks.value[to], item]
   commitLocal()
 }
 
-function setPause(trackIndex: number, length: number): void {
-  const tracks = result.value.tracks.map((t) => [...t])
-  const track = tracks[trackIndex]
+/** Eine Pause ans Ende einer Spur hängen; von dort wird sie an ihren Platz gezogen. */
+function addPause(trackIndex: number): void {
+  const track = localTracks.value[trackIndex]
   if (!track) return
-  const first = track[0]
-  if (first && first.kind === 'pause') track.shift()
-  if (length > 0) track.unshift({ kind: 'pause', id: uid('pause'), length })
-  commit(tracks)
+  localTracks.value[trackIndex] = [...track, { kind: 'pause', id: uid('pause'), length: 1 }]
+  commitLocal()
+}
+
+function setPauseLength(trackIndex: number, id: string, length: number): void {
+  localTracks.value[trackIndex] = localTracks.value[trackIndex].map((item) =>
+    item.kind === 'pause' && item.id === id ? { ...item, length: Math.max(1, length) } : item,
+  )
+  commitLocal()
+}
+
+function removeItem(trackIndex: number, id: string): void {
+  localTracks.value[trackIndex] = localTracks.value[trackIndex].filter(
+    (item) => itemDragId(item) !== id,
+  )
+  commitLocal()
 }
 
 function setFaktor(faktor: WechselFaktor): void {
@@ -132,8 +128,14 @@ function toggleClass(klasse: ClassId): void {
   store.dispatch({ type: 'UPDATE_PARCOURS', parcoursId: props.parcours.id, patch: { classIds } })
 }
 
-/** Die ersten Starts als Klassenfolge – zeigt sofort, ob die Verzahnung greift. */
-const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s) => s.klasse))
+/**
+ * Die Startfolge als Klassenfolge – zeigt sofort, ob die Verzahnung greift.
+ *
+ * Bewusst **vollständig**: Gerade das Ende ist die interessante Stelle, weil
+ * dort der un-verzahnte Block steht. Eine gekürzte Vorschau ließe genau das
+ * ungesehen, was mit den Pausen ausgerichtet werden soll.
+ */
+const previewClasses = computed(() => result.value.sequence.map((s) => s.klasse))
 </script>
 
 <template>
@@ -188,44 +190,40 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
     <template v-if="classes.length">
       <p class="hint" style="margin: 0">
         Klassen lassen sich zwischen den Spuren und innerhalb einer Spur ziehen. Die Reihenfolge in
-        einer Spur bestimmt, welche Klasse dort zuerst fährt.
+        einer Spur bestimmt, welche Klasse dort zuerst fährt. Eine <strong>Pause</strong> ist ein
+        Element wie eine Klasse: Sie lässt sich an jede Stelle der Spur ziehen und setzt die Spur
+        dort um die eingestellte Zahl von Takten aus – vorangestellt versetzt sie die ganze Spur,
+        zwischen zwei Klassen nur deren Übergang.
       </p>
 
       <div class="tracks">
-        <div v-for="(klassen, index) in localTracks" :key="index" class="track">
+        <div v-for="(items, index) in localTracks" :key="index" class="track">
           <div class="spread">
             <strong>Spur {{ index + 1 }}</strong>
-            <label class="row-tight small dim">
-              Pause davor
-              <input
-                type="number"
-                min="0"
-                max="99"
-                style="width: 4.5rem"
-                :value="pauseOf(index)"
-                @change="
-                  setPause(index, Math.max(0, Number(($event.target as HTMLInputElement).value)))
-                "
-              />
-              Takte
-            </label>
+            <button class="small" @click="addPause(index)">+ Pause</button>
           </div>
 
           <draggable
-            :list="klassen"
+            :list="items"
             :group="{ name: `spuren-${parcours.id}` }"
-            :item-key="(klasse: ClassId) => klasse"
+            :item-key="itemDragId"
             class="drop-zone"
             ghost-class="chip-ghost"
             drag-class="chip-drag"
             :animation="150"
             :force-fallback="true"
-            filter=".nudge"
+            filter=".nudge,.takte"
             :prevent-on-filter="false"
             @end="onDragEnd"
           >
             <template #item="{ element }">
-              <span class="chip" :style="{ background: classColor(element) }">
+              <span
+                class="chip"
+                :class="{ 'chip-pause': element.kind === 'pause' }"
+                :style="
+                  element.kind === 'class' ? { background: classColor(element.klasse) } : undefined
+                "
+              >
                 <button
                   class="nudge"
                   :disabled="index === 0"
@@ -234,7 +232,35 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
                 >
                   ▲
                 </button>
-                <span class="chip-label">{{ element }}</span>
+
+                <span v-if="element.kind === 'class'" class="chip-label">{{ element.klasse }}</span>
+                <template v-else>
+                  <span class="chip-label">⏸</span>
+                  <input
+                    class="takte"
+                    type="number"
+                    min="1"
+                    max="99"
+                    :value="element.length"
+                    title="Takte"
+                    @click.stop
+                    @change="
+                      setPauseLength(
+                        index,
+                        element.id,
+                        Number(($event.target as HTMLInputElement).value),
+                      )
+                    "
+                  />
+                  <button
+                    class="nudge"
+                    title="Pause entfernen"
+                    @click.stop="removeItem(index, element.id)"
+                  >
+                    ✕
+                  </button>
+                </template>
+
                 <button
                   class="nudge"
                   :disabled="index === localTracks.length - 1"
@@ -247,7 +273,7 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
             </template>
 
             <template #footer>
-              <span v-if="!klassen.length" class="empty-hint">Klasse hierher ziehen</span>
+              <span v-if="!items.length" class="empty-hint">Klasse hierher ziehen</span>
             </template>
           </draggable>
         </div>
@@ -270,7 +296,6 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
         >
           {{ klasse }}
         </span>
-        <span v-if="result.sequence.length > previewClasses.length" class="dim small">…</span>
       </div>
     </div>
     <p v-else class="hint">Keine Starter in den gewählten Klassen.</p>
@@ -320,9 +345,22 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
   cursor: grabbing;
 }
 
+/* Eine Pause gehört sichtbar nicht zu den Klassen – deshalb neutral und offen. */
+.chip-pause {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px dashed var(--border);
+}
+
 .chip-label {
   min-width: 1.1rem;
   text-align: center;
+}
+
+.takte {
+  width: 3rem;
+  padding: 0 0.2rem;
+  font-size: 0.8rem;
 }
 
 .chip-ghost {
@@ -344,6 +382,11 @@ const previewClasses = computed(() => result.value.sequence.slice(0, 40).map((s)
   font-size: 0.7rem;
   line-height: 1.4;
   cursor: pointer;
+}
+
+.chip-pause .nudge {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .nudge:disabled {

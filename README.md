@@ -25,8 +25,11 @@ Umschalten, der die alte Lösung geplagt hat, kann gar nicht mehr entstehen.
   auch am Ende von Lauf 2 fahren kann.
 - **Verzahnung** der Klassen über 1–4 Spuren, damit zwischen zwei Starts das
   Boot getauscht werden kann. Klassen lassen sich per **Drag & Drop** zwischen
-  den Spuren und innerhalb einer Spur verschieben; Pausen verschieben eine Spur
-  nach hinten, ohne eine Lücke in der Liste zu erzeugen.
+  den Spuren und innerhalb einer Spur verschieben; **Pausen** sind Elemente wie
+  Klassen und lassen sich an jede Stelle einer Spur ziehen – vorangestellt
+  versetzen sie die ganze Spur, zwischen zwei Klassen nur deren Übergang, jeweils
+  ohne eine Lücke in der Liste zu erzeugen. Die Vorschau zeigt die vollständige
+  Startfolge.
 - **Startliste nachbearbeiten**: Zeilen per Drag & Drop umsortieren oder über
   ein Menü direkt an eine Lauf-Grenze setzen („vor Lauf 3“, „nach Lauf 2“).
   Dabei bleibt die **Verzahnung erhalten** – die ganze Spur rutscht mit, damit
@@ -39,12 +42,21 @@ Umschalten, der die alte Lösung geplagt hat, kann gar nicht mehr entstehen.
   Lauf 2 an der Stelle, an die er verschoben wurde.
 - **Steg-Bedienung**: nächster Starter, Fehlklick zurücknehmen, Starter
   zurückstellen und wieder aktivieren, einen anderen Starter vorziehen (auch aus
-  einer anderen Klasse), eine ganze Klasse nach hinten oder vorn schieben, wenn
-  ein Boot defekt ist – und Meldungen auf die Tafel setzen, mit **Vorlagen** für
-  Begrüßung, Pause, Dank und Störung (Veranstaltungsname wird eingesetzt).
-- **Öffentliche Startliste** mit Wartezeit-Prognose. Die Startabstände werden je
-  Klasse gemessen und lassen sich am Ende als Vorgabe für die nächste
-  Veranstaltung übernehmen.
+  einer anderen Klasse), eine **Klasse aussetzen lassen**, wenn ihr Boot defekt
+  ist – sie wird grau und startet nicht mehr; mit „Andere Klassen vorziehen"
+  rückt die nächste Klasse derselben Spur auf ihre Plätze, sodass der Wechsel
+  zwischen den Spuren erhalten bleibt. Ist das Boot zurück, wird der Rest des
+  Laufs wieder mit ihr verzahnt. Die Klassen stehen dabei in der Reihenfolge, in
+  der sie drankommen, und lassen sich per **Drag & Drop vorziehen** – innerhalb
+  der Spuren, der Wechsel-Faktor bleibt also erhalten. Dazu
+  **Meldungen** auf der Tafel, mit Vorlagen für Begrüßung, Pause, Dank und
+  Störung (Veranstaltungsname wird eingesetzt).
+- **Öffentliche Startliste** mit Wartezeit-Prognose für den Lauf, der gerade
+  gefahren wird – für einen späteren steht der Beginn noch nicht fest. Die
+  Startabstände werden je Klasse gemessen (Ausreißer nach oben wie unten zählen
+  nicht mit) und lassen sich am Ende als Vorgabe für die nächste Veranstaltung
+  übernehmen. Bis dahin gelten die Werte der **DM 2025** – mittlere Fahrzeit je
+  Klasse aus den Ergebnislisten plus 30 s für den Bootswechsel.
 - **Mobile Bedienung** (Pro): Handys am Steg werden per QR-Code (wechselt alle
   30 s) oder sechsstelligem Geräte-Code (5 min gültig) freigeschaltet – mit
   genau den Rechten, die der Admin vorher festgelegt hat, etwa „nur Parcours

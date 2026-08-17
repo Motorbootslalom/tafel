@@ -46,7 +46,12 @@ export interface ClassItem {
   klasse: ClassId
 }
 
-/** Lässt eine Spur `length` Takte aussetzen – verschiebt die Verzahnung nach hinten. */
+/**
+ * Lässt eine Spur `length` Takte aussetzen – verschiebt alles, was in der Spur
+ * dahinter steht, nach hinten. Eine Pause darf an jeder Stelle einer Spur
+ * stehen, nicht nur am Anfang: So lässt sich auch der Übergang zwischen zwei
+ * Klassen derselben Spur gezielt versetzen.
+ */
 export interface PauseItem {
   kind: 'pause'
   id: string
@@ -122,6 +127,29 @@ export interface ParcoursRuntime {
    * freigegeben und taucht in der Liste für Lauf 2 an seiner Stelle auf.
    */
   releasedLauf: number
+  /**
+   * Klassen, die gerade nicht starten können – typischerweise, weil ihr Boot
+   * defekt ist. Sie stehen weiter in der Liste, werden am Steg aber grau
+   * dargestellt und (bei {@link pullForward}) übersprungen.
+   */
+  pausedClasses: ClassId[]
+  /**
+   * Andere Klassen vorziehen, solange eine Klasse aussetzt.
+   *
+   * Eine ausgesetzte Klasse startet in beiden Fällen nicht. Die Einstellung
+   * entscheidet nur, was mit den **freigewordenen Plätzen** geschieht:
+   *
+   * An: Der Rest des Laufs wird ohne die ausgesetzte Klasse neu verzahnt – die
+   * nächste Klasse derselben Spur rückt auf ihren Platz. Der Wechsel zwischen
+   * den Spuren bleibt damit erhalten, am Steg bleibt Zeit für den Bootswechsel.
+   *
+   * Aus: Die geplante Reihenfolge bleibt stehen, die Lücken schließen sich
+   * einfach. Danach folgen mehrere Starter derselben Klasse aufeinander.
+   *
+   * Kommt die Klasse zurück, wird der Rest des Laufs wieder mit ihr verzahnt –
+   * sofern vorgezogen wurde, denn sonst hat sich nie etwas verschoben.
+   */
+  pullForward: boolean
 }
 
 // ---------------------------------------------------------------------------

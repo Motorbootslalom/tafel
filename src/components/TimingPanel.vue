@@ -4,6 +4,7 @@ import { useStore } from '../state/store'
 import { classColor, CLASS_IDS } from '../lib/classes'
 import { classStats, DEFAULT_INTERVAL_S, formatDuration } from '../lib/timing'
 import { klasseLookup } from '../state/reducer'
+import { defaultTimings } from '../data/timings'
 import type { ClassId, TimingTable } from '../types'
 
 /**
@@ -98,7 +99,18 @@ const asText = computed(() =>
         Messwerte als Vorgabe übernehmen
       </button>
       <span class="dim small">{{ totalSamples }} gemessene Startabstände</span>
+      <!--
+        Für Veranstaltungen, die schon ohne Vorgaben angelegt wurden: Ein neuer
+        Zustand bringt die Werte mit, ein bestehender behält seine eigenen.
+      -->
+      <button style="margin-left: auto" @click="store.dispatch({ type: 'SET_TIMINGS', timings: defaultTimings() })">
+        Werte der DM 2025 einsetzen
+      </button>
     </div>
+    <p class="hint">
+      Die DM-2025-Werte stammen aus den Ergebnislisten: mittlere Fahrzeit je Klasse über alle drei
+      Läufe, plus 30 s für den Bootswechsel am Steg.
+    </p>
 
     <details style="margin-top: 0.5rem">
       <summary class="small dim">Vorgaben als Text (für die Unterlagen)</summary>

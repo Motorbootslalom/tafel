@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { initialState, migrate, reduce } from './reducer'
 import type { Action } from './actions'
 import { starters } from '../lib/testing'
-import { currentSlot, pendingSlots } from '../lib/startlist'
-import type { AppState } from '../types'
+import { currentSlot, pendingSlots, startableSlots } from '../lib/startlist'
+import type { AppState, TrackItem } from '../types'
 
 function apply(state: AppState, ...actions: Action[]): AppState {
   return actions.reduce(reduce, state)
@@ -85,14 +85,91 @@ describe('Betrieb', () => {
     expect(apply(state, { type: 'ADVANCE', parcoursId: 'gibt-es-nicht', now: 1 })).toBe(state)
   })
 
-  it('verschiebt eine Klasse bei defektem Boot nach hinten', () => {
+  it('überspringt bei defektem Boot die ausgesetzte Klasse', () => {
     let state = withStarters({ E: 3, '1': 3 })
     const parcoursId = state.parcoursList[0].id
     const klasseOf = (id: string) => state.starters.find((s) => s.id === id)!.klasse
     expect(pendingSlots(state.runtimes[0]).map((s) => klasseOf(s.starterId)).join('')).toBe('E1E1E1')
 
-    state = apply(state, { type: 'SHIFT_CLASS', parcoursId, klasse: 'E', steps: 1 })
-    expect(pendingSlots(state.runtimes[0]).map((s) => klasseOf(s.starterId)).join('')).toBe('1E1E1E')
+    state = apply(state, { type: 'SET_CLASS_PAUSED', parcoursId, klasse: 'E', paused: true })
+    state = apply(state, { type: 'ADVANCE', parcoursId, now: 1000 })
+
+    // Klasse E setzt aus, also kommt die Klasse 1 zuerst auf die Tafel.
+    const gezeigt = currentSlot(state.runtimes[0])!
+    expect(klasseOf(gezeigt.starterId)).toBe('1')
+  })
+
+  it('zieht beim Aussetzen die nächste Klasse derselben Spur vor', () => {
+    // Spur 1: E, 1, 3 · Spur 2: 2, 6 → E2E21212121216163.
+    // Fällt Klasse 2 aus, muss Klasse 6 auf deren Plätze aufrücken.
+    const tracks: TrackItem[][] = [
+      [
+        { kind: 'class', klasse: 'E' },
+        { kind: 'class', klasse: '1' },
+        { kind: 'class', klasse: '3' },
+      ],
+      [
+        { kind: 'class', klasse: '2' },
+        { kind: 'class', klasse: '6' },
+      ],
+    ]
+    let state = withStarters({ E: 2, '1': 6, '2': 6, '3': 1, '6': 2 })
+    const parcoursId = state.parcoursList[0].id
+    state = apply(
+      state,
+      { type: 'UPDATE_PARCOURS', parcoursId, patch: { classIds: ['E', '1', '2', '3', '6'] } },
+      { type: 'SET_TRACKS', parcoursId, tracks },
+      { type: 'GENERATE_ALL_STARTLISTS' },
+    )
+
+    const klasseOf = (id: string) => state.starters.find((s) => s.id === id)!.klasse
+    const folge = () =>
+      startableSlots(state.runtimes[0], (id) => klasseOf(id))
+        .map((s) => klasseOf(s.starterId))
+        .join('')
+
+    expect(folge()).toBe('E2E21212121216163')
+
+    state = apply(state, { type: 'SET_CLASS_PAUSED', parcoursId, klasse: '2', paused: true })
+    expect(folge()).toBe('E6E61111113')
+  })
+
+  it('lässt die Reihenfolge stehen, wenn nicht vorgezogen werden soll', () => {
+    let state = withStarters({ E: 2, '1': 4 })
+    const parcoursId = state.parcoursList[0].id
+    const klasseOf = (id: string) => state.starters.find((s) => s.id === id)!.klasse
+    const geplant = () => state.runtimes[0].slots.map((s) => klasseOf(s.starterId)).join('')
+
+    const vorher = geplant()
+    state = apply(
+      state,
+      { type: 'SET_PULL_FORWARD', parcoursId, pullForward: false },
+      { type: 'SET_CLASS_PAUSED', parcoursId, klasse: 'E', paused: true },
+    )
+
+    // Umsortiert wird nichts – die Lücken schließen sich erst beim Fahren.
+    expect(geplant()).toBe(vorher)
+    // Übersprungen wird die Klasse trotzdem.
+    state = apply(state, { type: 'ADVANCE', parcoursId, now: 1000 })
+    expect(klasseOf(currentSlot(state.runtimes[0])!.starterId)).toBe('1')
+  })
+
+  it('webt eine zurückgekehrte Klasse wieder in den Rest des Laufs ein', () => {
+    let state = withStarters({ E: 3, '1': 3 })
+    const parcoursId = state.parcoursList[0].id
+    const klasseOf = (id: string) => state.starters.find((s) => s.id === id)!.klasse
+    const muster = () =>
+      state.runtimes[0].slots.map((s) => klasseOf(s.starterId)).join('')
+
+    state = apply(state, { type: 'SET_CLASS_PAUSED', parcoursId, klasse: 'E', paused: true })
+    state = apply(state, { type: 'ADVANCE', parcoursId, now: 1000 })
+    state = apply(state, { type: 'ADVANCE', parcoursId, now: 2000 })
+    // Die ausgesetzte Klasse steht am Ende des Laufs – dort, wo sie auch fährt,
+    // sobald das Boot zurück ist.
+    expect(muster()).toBe('111EEE')
+
+    state = apply(state, { type: 'SET_CLASS_PAUSED', parcoursId, klasse: 'E', paused: false })
+    expect(muster()).toBe('11E1EE')
   })
 
   it('setzt und löscht eine Störungsmeldung', () => {

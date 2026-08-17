@@ -49,6 +49,8 @@ function runtime(options: { laufend?: boolean; message?: ParcoursRuntime['messag
     history: options.laufend === false ? [] : ['a', 'b'],
     message: options.message ?? null,
     releasedLauf: 2,
+    pausedClasses: [],
+    pullForward: true,
   }
 }
 
@@ -87,6 +89,11 @@ describe('BoardRegion – laufender Starter', () => {
 
   it('zeigt den Starter davor', () => {
     expect(render(runtime()).text()).toContain('401')
+  })
+
+  it('nennt beim Starter davor auch seine Klasse', () => {
+    // Ohne Klasse sagt die Nummer allein niemandem, welches Boot zurückkommt.
+    expect(render(runtime()).find('.board-previous').text()).toContain('Klasse 4')
   })
 
   it('blendet den Starter davor auf Wunsch aus', () => {
@@ -150,6 +157,22 @@ describe('BoardRegion – Meldungen', () => {
     const text = render(runtime({ message: { text: 'Störung', kind: 'stoerung' } })).text()
     expect(text).toContain('Störung')
     expect(text).not.toContain('404')
+  })
+
+  it('lässt den Parcours-Namen bei Störung und Pause stehen', () => {
+    // Bei zwei Parcours ist der Name die einzige Zuordnung, für welchen Bereich
+    // des Sees die Meldung gilt.
+    for (const kind of ['stoerung', 'pause'] as const) {
+      const wrapper = render(runtime({ message: { text: 'Kurze Pause', kind } }))
+      expect(wrapper.find('.board-meta .parcours').text(), kind).toBe('Parcours 1 – Land')
+    }
+  })
+
+  it('blendet ihn auch bei einer Meldung aus, wenn er abgeschaltet ist', () => {
+    const wrapper = render(runtime({ message: { text: 'Störung', kind: 'stoerung' } }), {
+      showParcoursName: false,
+    })
+    expect(wrapper.text()).not.toContain('Parcours 1 – Land')
   })
 
   it('stellt eine Info unter den Starter, ohne ihn zu verdrängen', () => {

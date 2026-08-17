@@ -49,7 +49,19 @@ export type Action =
       lauf: number
       where: 'next' | 'end'
     }
-  | { type: 'SHIFT_CLASS'; parcoursId: string; klasse: ClassId; steps: number }
+  /**
+   * Eine Klasse aussetzen lassen oder zurückholen – der Fall „Boot defekt".
+   * Beim Zurückholen werden ihre offenen Starts wieder in den Rest des Laufs
+   * eingewoben.
+   */
+  | { type: 'SET_CLASS_PAUSED'; parcoursId: string; klasse: ClassId; paused: boolean }
+  /** „Andere Klassen vorziehen", solange eine Klasse aussetzt. */
+  | { type: 'SET_PULL_FORWARD'; parcoursId: string; pullForward: boolean }
+  /**
+   * Eine Klasse im Rest des Laufs vorziehen: Ihr nächster Start landet dort, wo
+   * bisher der nächste Start von `before` stand. `before: null` = ans Ende.
+   */
+  | { type: 'MOVE_CLASS_BEFORE'; parcoursId: string; klasse: ClassId; before: ClassId | null }
   | { type: 'RELEASE_LAUF'; parcoursId: string; lauf: number }
   | { type: 'SET_MESSAGE'; parcoursId: string; message: BoardMessage | null }
 
@@ -78,7 +90,9 @@ export const OPERATOR_ACTIONS: ReadonlySet<ActionType> = new Set<ActionType>([
   'MOVE_SLOT_TO_ANCHOR',
   'REMOVE_SLOT',
   'INSERT_SLOT',
-  'SHIFT_CLASS',
+  'SET_CLASS_PAUSED',
+  'SET_PULL_FORWARD',
+  'MOVE_CLASS_BEFORE',
   'RELEASE_LAUF',
   'SET_MESSAGE',
 ])

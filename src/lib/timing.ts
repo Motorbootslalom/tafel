@@ -1,5 +1,6 @@
 import type { ClassId, ParcoursRuntime, StartSlot, TimingTable } from '../types'
 import { CLASS_IDS } from './classes'
+import { startableSlots } from './startlist'
 
 /**
  * Startabstände messen und Wartezeiten prognostizieren.
@@ -15,6 +16,14 @@ import { CLASS_IDS } from './classes'
  * Pause, Störung oder Mittagspause – sie würden den Schnitt verfälschen.
  */
 export const MAX_PLAUSIBLE_GAP_S = 300
+
+/**
+ * Abstände unterhalb dieser Grenze sind nie ein echter Lauf: Sie entstehen beim
+ * Durchklicken, beim Zurücknehmen eines Fehlklicks oder beim Nachtragen. Zählten
+ * sie mit, sackte der Schnitt auf wenige Sekunden – und die Startliste versprach
+ * zwanzig Startern hintereinander „gleich".
+ */
+export const MIN_PLAUSIBLE_GAP_S = 30
 
 /** Fallback, solange weder Messung noch Vorgabewert existiert. */
 export const DEFAULT_INTERVAL_S = 90
@@ -34,7 +43,8 @@ export interface ClassStat {
 
 /**
  * Liest die gemessenen Startabstände aus der Historie eines Parcours.
- * Unplausible Abstände (siehe {@link MAX_PLAUSIBLE_GAP_S}) werden verworfen.
+ * Unplausible Abstände – zu lang (siehe {@link MAX_PLAUSIBLE_GAP_S}) wie zu kurz
+ * (siehe {@link MIN_PLAUSIBLE_GAP_S}) – werden verworfen.
  */
 export function measurements(
   rt: ParcoursRuntime,
@@ -49,7 +59,7 @@ export function measurements(
   for (let i = 1; i < shown.length; i++) {
     const prev = shown[i - 1]
     const seconds = (shown[i].shownAt! - prev.shownAt!) / 1000
-    if (seconds <= 0 || seconds > MAX_PLAUSIBLE_GAP_S) continue
+    if (seconds < MIN_PLAUSIBLE_GAP_S || seconds > MAX_PLAUSIBLE_GAP_S) continue
     const klasse = klasseOf(prev.starterId)
     if (klasse) out.push({ klasse, seconds })
   }
@@ -116,6 +126,15 @@ export interface WaitEstimate {
  * Prognostiziert für jeden offenen Slot, wie lange es noch bis zu seinem Start
  * dauert. Die Restzeit des gerade laufenden Starters wird mitgerechnet, damit
  * die Anzeige nicht springt, wenn ein Lauf länger dauert.
+ *
+ * Gerechnet wird **nur für den Lauf, der gerade gefahren wird**. Für jeden
+ * anderen ist der Beginn schlicht unbekannt: Zwischen Lauf 1 und 2 liegt die
+ * Mittagspause, zwischen 2 und 3 eine Nacht. Solche Starts bekommen deshalb
+ * keinen Eintrag – die Oberfläche zeigt dort keine Zeit an, statt eine
+ * hochgerechnete Zahl zu erfinden.
+ *
+ * Ebenfalls ohne Eintrag: Starts einer Klasse, die gerade aussetzt. Wann ihr
+ * Boot zurück ist, weiß niemand.
  */
 export function waitEstimates(
   rt: ParcoursRuntime,
@@ -126,6 +145,10 @@ export function waitEstimates(
   const currentId = rt.history[rt.history.length - 1]
   const current = currentId ? rt.slots.find((s) => s.id === currentId) : undefined
 
+  const offen = startableSlots(rt, klasseOf)
+  const laufendeRunde = offen[0]?.lauf
+  if (laufendeRunde === undefined) return []
+
   let acc = 0
   if (current && typeof current.shownAt === 'number') {
     const klasse = klasseOf(current.starterId)
@@ -135,12 +158,8 @@ export function waitEstimates(
   }
 
   const out: WaitEstimate[] = []
-  for (const slot of rt.slots) {
-    if (slot.status !== 'pending') continue
-    // Für einen noch nicht freigegebenen Lauf ergibt eine Wartezeit keinen
-    // Sinn: Zwischen Lauf 1 und 2 liegt die Mittagspause, zwischen 2 und 3 eine
-    // Nacht. Eine hochgerechnete Zahl wäre schlicht falsch.
-    if (slot.lauf > rt.releasedLauf) continue
+  for (const slot of offen) {
+    if (slot.lauf !== laufendeRunde) continue
     out.push({ slotId: slot.id, seconds: acc })
     const klasse = klasseOf(slot.starterId)
     acc += klasse ? estimate(klasse) : DEFAULT_INTERVAL_S

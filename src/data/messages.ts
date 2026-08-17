@@ -28,24 +28,28 @@ export const EVENT_PLACEHOLDER = '{Veranstaltung}'
 
 export const MESSAGE_GROUPS: MessageGroup[] = [
   {
+    // Begrüßungen stehen groß und allein auf der Tafel, deshalb 'pause' und
+    // nicht 'info': Sie richten sich an alle im Umfeld und werden gelesen,
+    // bevor der erste Starter oben steht. Als kleine Zeile unter dem Starter
+    // gingen sie in 50 m Entfernung unter.
     title: 'Begrüßung',
     items: [
       {
         label: 'Guten Morgen',
         text: `Guten Morgen und herzlich willkommen\nzum ${EVENT_PLACEHOLDER}`,
-        kind: 'info',
+        kind: 'pause',
       },
       {
         label: 'Willkommen zurück (Tag 2)',
         text: `Willkommen zurück zum ${EVENT_PLACEHOLDER}\n– Tag 2 –\nUm 9:30 Uhr geht es los!`,
-        kind: 'info',
+        kind: 'pause',
       },
       {
         label: 'Gleich geht es los',
         text: 'Gleich geht es los –\nbitte fertig machen',
-        kind: 'info',
+        kind: 'pause',
       },
-      { label: 'Viel Erfolg', text: 'Viel Erfolg allen Startern!', kind: 'info' },
+      { label: 'Viel Erfolg', text: 'Viel Erfolg allen Startern!', kind: 'pause' },
     ],
   },
   {
@@ -89,7 +93,7 @@ export const MESSAGE_GROUPS: MessageGroup[] = [
   {
     title: 'Störung',
     items: [
-      { label: 'Kurze Störung', text: 'Kurze Störung – bitte warten', kind: 'stoerung' },
+      { label: 'Kurze Störung', text: 'Kurze Störung – gleich geht es weiter', kind: 'stoerung' },
       {
         label: 'Störung im Betriebsablauf',
         text: 'Störung im Betriebsablauf.\nWir bitten um Ihr Verständnis.',

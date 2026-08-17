@@ -9,7 +9,7 @@ import {
   statsToPresets,
   waitEstimates,
 } from './timing'
-import { advance, emptyRuntime, generateSlots } from './startlist'
+import { advance, emptyRuntime, generateSlots, setClassPaused } from './startlist'
 import { klasseLookup, parcours, starters } from './testing'
 import type { ParcoursRuntime, TimingTable } from '../types'
 
@@ -28,6 +28,19 @@ function running(gapsSeconds: number[]) {
   return { rt, klasseOf: klasseLookup(list), now: t }
 }
 
+/** Zwei Läufe, Lauf 1 angefangen – Lauf 2 ist freigegeben, aber noch nicht dran. */
+function runningMehrlauf() {
+  const list = starters({ E: 3, '1': 3 })
+  const p = parcours(['E', '1'])
+  let rt: ParcoursRuntime = {
+    ...emptyRuntime(p.id),
+    slots: generateSlots(p, list, 2),
+    releasedLauf: 2,
+  }
+  rt = advance(rt, 0)
+  return { rt, klasseOf: klasseLookup(list), now: 0 }
+}
+
 describe('measurements', () => {
   it('schreibt den Abstand dem vorherigen Starter zu', () => {
     // Verzahnt E1E1… – der erste Abstand gehört also zu Klasse E.
@@ -42,6 +55,14 @@ describe('measurements', () => {
     const { rt, klasseOf } = running([60, 3600, 70])
     const seconds = measurements(rt, klasseOf).map((m) => m.seconds)
     expect(seconds).toEqual([60, 70])
+  })
+
+  it('verwirft zu kurze Abstände – das ist nie ein echter Lauf', () => {
+    // Durchklicken, Fehlklick zurücknehmen, Nachtragen: Solche Abstände zögen
+    // den Schnitt auf wenige Sekunden, und die Startliste verspräche zwanzig
+    // Startern hintereinander „gleich".
+    const { rt, klasseOf } = running([60, 3, 70])
+    expect(measurements(rt, klasseOf).map((m) => m.seconds)).toEqual([60, 70])
   })
 
   it('liefert nichts, solange nur ein Starter gezeigt wurde', () => {
@@ -99,10 +120,30 @@ describe('waitEstimates', () => {
     expect(first.seconds).toBe(0)
   })
 
-  it('liefert für jeden offenen Slot einen Wert', () => {
+  it('liefert für jeden offenen Slot des laufenden Laufs einen Wert', () => {
     const { rt, klasseOf, now } = running([60, 60])
     const estimates = waitEstimates(rt, klasseOf, () => 90, now)
     expect(estimates).toHaveLength(rt.slots.filter((s) => s.status === 'pending').length)
+  })
+
+  it('lässt spätere Läufe aus – deren Beginn steht noch gar nicht fest', () => {
+    // Zwischen Lauf 1 und 2 liegt die Mittagspause, zwischen 2 und 3 eine Nacht.
+    // Eine hochgerechnete Zahl wäre dort schlicht falsch.
+    const { rt, klasseOf, now } = runningMehrlauf()
+    const estimates = waitEstimates(rt, klasseOf, () => 90, now)
+    const laufVon = new Map(rt.slots.map((s) => [s.id, s.lauf]))
+    expect(estimates.length).toBeGreaterThan(0)
+    expect(estimates.every((e) => laufVon.get(e.slotId) === 1)).toBe(true)
+  })
+
+  it('nennt für eine ausgesetzte Klasse keine Zeit', () => {
+    // Wann das Boot zurück ist, weiß niemand.
+    const { rt, klasseOf, now } = running([60])
+    const aus = setClassPaused(rt, 'E', true)
+    const estimates = waitEstimates(aus, klasseOf, () => 90, now)
+    expect(estimates.some((e) => klasseOf(aus.slots.find((s) => s.id === e.slotId)!.starterId) === 'E')).toBe(
+      false,
+    )
   })
 })
 

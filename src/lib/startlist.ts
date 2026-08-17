@@ -1,5 +1,5 @@
-import type { ClassId, Parcours, ParcoursRuntime, StartSlot, Starter } from '../types'
-import { computeVerzahnung } from './verzahnung'
+import type { ClassId, Parcours, ParcoursRuntime, StartSlot, Starter, TrackItem } from '../types'
+import { buildSequence, computeVerzahnung, trackOfClass } from './verzahnung'
 
 /**
  * Erzeugt die Startliste eines Parcours: die verzahnte Reihenfolge, einmal je
@@ -29,8 +29,19 @@ export function generateSlots(
 }
 
 export function emptyRuntime(parcoursId: string): ParcoursRuntime {
-  return { parcoursId, slots: [], history: [], message: null, releasedLauf: 1 }
+  return {
+    parcoursId,
+    slots: [],
+    history: [],
+    message: null,
+    releasedLauf: 1,
+    pausedClasses: [],
+    pullForward: true,
+  }
 }
+
+/** Nachschlag der Klasse eines Starters – überall dort nötig, wo Klassen aussetzen. */
+export type KlasseOf = (starterId: string) => ClassId | null
 
 // ---------------------------------------------------------------------------
 // Abfragen
@@ -58,7 +69,7 @@ export function pendingSlots(rt: ParcoursRuntime): StartSlot[] {
  * freigegebenen Lauf. Genau diese Liste arbeitet das Stegpersonal ab.
  */
 export function releasedSlots(rt: ParcoursRuntime): StartSlot[] {
-  return pendingSlots(rt).filter((s) => s.lauf <= rt.releasedLauf)
+  return pendingSlots(rt).filter((s) => isReleased(rt, s))
 }
 
 /** Ist ein Slot zum Fahren freigegeben? */
@@ -71,12 +82,60 @@ export function deferredSlots(rt: ParcoursRuntime): StartSlot[] {
   return rt.slots.filter((s) => s.status === 'deferred')
 }
 
-/** Der Slot, der als nächstes an der Reihe wäre – nie aus einem gesperrten Lauf. */
-export function nextSlot(rt: ParcoursRuntime): StartSlot | null {
-  return releasedSlots(rt)[0] ?? null
+/** Setzt diese Klasse gerade aus (Boot defekt, Fahrer noch nicht am Steg)? */
+export function isClassPaused(rt: ParcoursRuntime, klasse: ClassId): boolean {
+  return rt.pausedClasses.includes(klasse)
 }
 
-/** Ist der freigegebene Lauf durch? */
+/**
+ * Setzt eine Klasse aus bzw. holt sie zurück.
+ *
+ * Das reine Kennzeichnen; das Wiedereinweben der offenen Starts übernimmt
+ * {@link reinterleaveOpen} – dafür braucht es die Spur-Anordnung, die hier
+ * bewusst nicht bekannt ist.
+ */
+export function setClassPaused(
+  rt: ParcoursRuntime,
+  klasse: ClassId,
+  paused: boolean,
+): ParcoursRuntime {
+  if (isClassPaused(rt, klasse) === paused) return rt
+  const pausedClasses = paused
+    ? [...rt.pausedClasses, klasse]
+    : rt.pausedClasses.filter((k) => k !== klasse)
+  return { ...rt, pausedClasses }
+}
+
+/**
+ * Offene Slots, die **jetzt** gefahren werden können: freigegeben und nicht aus
+ * einer ausgesetzten Klasse. Genau diese Folge arbeitet der Steg ab.
+ *
+ * Übersprungen wird immer – ein fehlendes Boot fährt nicht, gleich wie der
+ * Parcours eingestellt ist. Ob die übrigen Klassen dabei auf die freigewordenen
+ * Plätze **aufrücken**, entscheidet `pullForward`; das ist eine Umsortierung der
+ * Liste und steckt in {@link reinterleaveOpen}.
+ */
+export function startableSlots(rt: ParcoursRuntime, klasseOf?: KlasseOf): StartSlot[] {
+  const released = releasedSlots(rt)
+  if (!klasseOf || !rt.pausedClasses.length) return released
+  return released.filter((s) => {
+    const klasse = klasseOf(s.starterId)
+    return !klasse || !isClassPaused(rt, klasse)
+  })
+}
+
+/** Der Slot, der als nächstes an der Reihe wäre – nie aus einem gesperrten Lauf. */
+export function nextSlot(rt: ParcoursRuntime, klasseOf?: KlasseOf): StartSlot | null {
+  return startableSlots(rt, klasseOf)[0] ?? null
+}
+
+/**
+ * Ist der freigegebene Lauf durch?
+ *
+ * Bewusst ohne Rücksicht auf ausgesetzte Klassen: Deren Starts stehen noch aus,
+ * der Lauf ist also nicht fertig – er stockt nur. Das ist am Steg ein anderer
+ * Hinweis als „Lauf ist durch“.
+ */
 export function laufComplete(rt: ParcoursRuntime): boolean {
   return releasedSlots(rt).length === 0
 }
@@ -131,8 +190,8 @@ export function showSlot(rt: ParcoursRuntime, slotId: string, now: number): Parc
 }
 
 /** Schaltet auf den nächsten offenen Starter weiter. */
-export function advance(rt: ParcoursRuntime, now: number): ParcoursRuntime {
-  const next = nextSlot(rt)
+export function advance(rt: ParcoursRuntime, now: number, klasseOf?: KlasseOf): ParcoursRuntime {
+  const next = nextSlot(rt, klasseOf)
   return next ? showSlot(rt, next.id, now) : rt
 }
 
@@ -417,64 +476,186 @@ export function moveSlot(
 }
 
 /**
- * Verschiebt eine ganze Klasse in der Verzahnung nach hinten (`steps > 0`) oder
- * nach vorn (`steps < 0`).
+ * Verzahnt die noch offenen Starts eines freigegebenen Laufs neu – **ohne** die
+ * gerade ausgesetzten Klassen.
  *
- * Genau das braucht das Stegpersonal, wenn das Boot einer Klasse defekt ist:
- * Die Klasse setzt aus, eine andere springt ein, und sobald das Boot wieder da
- * ist, läuft die Verzahnung mit dem neuen Versatz weiter. Nur offene Slots
- * werden bewegt; bereits gefahrene bleiben, wo sie sind.
+ * Der Fall dahinter: Das Boot einer Klasse fällt aus. Ihre Plätze in der
+ * Startfolge werden frei, und die nächste Klasse **derselben Spur** soll darauf
+ * aufrücken. Nur so bleibt der Wechsel zwischen den Spuren erhalten und am Steg
+ * die Zeit für den Bootswechsel:
+ *
+ * ```
+ * E 2 E 2 1 2 1 2 1 2 1 2 1 6 1 6 3   Spur 1: E,1,3 · Spur 2: 2,6
+ * E 6 E 6 1 1 1 1 1 1 3               Klasse 2 setzt aus – Klasse 6 rückt auf
+ * ```
+ *
+ * Die Starts der ausgesetzten Klassen wandern dabei ans **Ende ihres Laufs**.
+ * Sie zwischen den anderen stehen zu lassen wäre irreführend: Die Startliste
+ * zeigte dann eine Reihenfolge, in der sie nie fahren, und es sähe aus, als sei
+ * die falsche Klasse herausgenommen worden. Kommt das Boot zurück, werden sie
+ * beim nächsten Weben wieder eingereiht.
+ *
+ * Gerechnet wird mit derselben Verzahnung wie in der Verwaltung, angewandt aber
+ * nur auf den **Rest** des jeweiligen Laufs. Bereits gefahrene Starts, gesperrte
+ * Läufe und zurückgestellte Starter bleiben unangetastet; jeder Lauf wird für
+ * sich gewoben, damit sich die Läufe nicht vermischen.
+ *
+ * Pausen aus der Spur-Anordnung bleiben außen vor: Sie versetzen den **Beginn**
+ * eines Laufs und sind mitten im Lauf längst verbraucht.
  */
-export function shiftClass(
+export interface ReinterleaveOptions {
+  /**
+   * Gewünschte Klassen-Reihenfolge. Die **Spuren bleiben dabei erhalten** – die
+   * Klassen werden nur innerhalb ihrer eigenen Spur umsortiert. Alles andere
+   * hübe den Wechsel-Faktor auf: Bei zwei Spuren liefen dann acht Klassen im
+   * Reigen durch, statt zwischen zwei Spuren zu wechseln.
+   */
+  order?: ClassId[]
+  /** Nur diesen einen Lauf anfassen (statt aller freigegebenen). */
+  nurLauf?: number
+}
+
+export function reinterleaveOpen(
   rt: ParcoursRuntime,
-  klasse: ClassId,
-  klasseOf: (starterId: string) => ClassId | null,
-  steps: number,
+  tracks: TrackItem[][],
+  klasseOf: KlasseOf,
+  options: ReinterleaveOptions = {},
 ): ParcoursRuntime {
-  if (steps === 0) return rt
-
-  // Nur der freigegebene Lauf wird umsortiert – ein späterer Lauf hat mit dem
-  // ausgefallenen Boot von jetzt nichts zu tun.
-  const pendingIdx: number[] = []
-  rt.slots.forEach((s, i) => {
-    if (s.status === 'pending' && isReleased(rt, s)) pendingIdx.push(i)
-  })
-
-  // Die offenen Slots als eigene Sequenz umsortieren und danach zurückschreiben.
-  const pending = pendingIdx.map((i) => rt.slots[i])
-  const isTarget = (s: StartSlot) => klasseOf(s.starterId) === klasse
-
-  // Zwei Ströme: die Klasse und alle anderen. Die anderen behalten ihre
-  // Reihenfolge; die Klasse rutscht um `steps` Positionen weiter. Rekonstruiert
-  // wird Position für Position – so bleibt der Versatz auch dann korrekt, wenn
-  // mehrere Slots derselben Klasse hintereinander liegen.
-  const targets: StartSlot[] = []
-  const others: StartSlot[] = []
-  const wantedAt: number[] = []
-  pending.forEach((s, i) => {
-    if (isTarget(s)) {
-      targets.push(s)
-      wantedAt.push(i + steps)
-    } else {
-      others.push(s)
-    }
-  })
-
-  const reordered: StartSlot[] = []
-  let ti = 0
-  let oi = 0
-  for (let pos = 0; pos < pending.length; pos++) {
-    const targetWantsHere = ti < targets.length && wantedAt[ti] <= pos
-    const othersExhausted = oi >= others.length
-    if (ti < targets.length && (targetWantsHere || othersExhausted)) reordered.push(targets[ti++])
-    else reordered.push(others[oi++])
+  const faehrt = (klasse: ClassId) => !isClassPaused(rt, klasse)
+  const order = options.order
+  const rang = (klasse: ClassId) => {
+    const i = order?.indexOf(klasse) ?? -1
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
 
-  const slots = [...rt.slots]
-  pendingIdx.forEach((slotIndex, i) => {
-    slots[slotIndex] = reordered[i]
+  const nurKlassen = tracks.map((track) => {
+    const klassen = track.filter(
+      (i): i is Extract<TrackItem, { kind: 'class' }> => i.kind === 'class' && faehrt(i.klasse),
+    )
+    return order ? [...klassen].sort((a, b) => rang(a.klasse) - rang(b.klasse)) : klassen
   })
-  return withSlots(rt, slots)
+  if (!nurKlassen.some((track) => track.length)) return rt
+
+  // Wo der Reigen einsetzt. Ohne Vorgabe: hinter der Spur des zuletzt gezeigten
+  // Starters, sonst stünden an der Nahtstelle zwei Starter derselben Spur. Mit
+  // Vorgabe: bei der Spur der Klasse, die vorn stehen soll – nur so kommt sie
+  // auch wirklich als Nächste dran.
+  //
+  // Bewusst aus der **vollständigen** Anordnung: Der letzte Starter kann aus der
+  // Klasse stammen, die gerade ausgesetzt wurde.
+  const spurVon = trackOfClass(tracks)
+  const laufend = currentSlot(rt)
+  const laufendeKlasse = laufend ? klasseOf(laufend.starterId) : null
+  const startTrack = order
+    ? spurVon.get(order[0]) ?? 0
+    : laufendeKlasse !== null && spurVon.has(laufendeKlasse)
+      ? spurVon.get(laufendeKlasse)! + 1
+      : 0
+
+  let slots = rt.slots
+  for (const lauf of laeufeOf(rt)) {
+    if (lauf > rt.releasedLauf) continue
+    if (options.nurLauf !== undefined && lauf !== options.nurLauf) continue
+
+    const positions: number[] = []
+    const byClass = new Map<ClassId, StartSlot[]>()
+    const ohneKlasse: StartSlot[] = []
+    const ausgesetzt: StartSlot[] = []
+
+    slots.forEach((slot, i) => {
+      if (slot.status !== 'pending' || slot.lauf !== lauf) return
+      positions.push(i)
+      const klasse = klasseOf(slot.starterId)
+      if (klasse && !faehrt(klasse)) {
+        ausgesetzt.push(slot)
+        return
+      }
+      if (!klasse) {
+        ohneKlasse.push(slot)
+        return
+      }
+      const list = byClass.get(klasse) ?? []
+      list.push(slot)
+      byClass.set(klasse, list)
+    })
+    if (positions.length < 2) continue
+
+    // Starter aus Klassen, die gar nicht in der Anordnung stehen, gingen beim
+    // Weben verloren. Lieber gar nicht anfassen als jemanden verlieren.
+    const gewoben = [
+      ...buildSequence(nurKlassen, byClass, startTrack),
+      ...ohneKlasse,
+      // Ans Ende: Bis das Boot zurück ist, fahren sie nicht.
+      ...ausgesetzt,
+    ]
+    if (gewoben.length !== positions.length) continue
+
+    const next = [...slots]
+    positions.forEach((pos, i) => {
+      next[pos] = gewoben[i]
+    })
+    slots = next
+  }
+
+  return slots === rt.slots ? rt : withSlots(rt, slots)
+}
+
+/**
+ * Die Klassen in der Reihenfolge, in der sie im Rest des Laufs drankommen –
+ * maßgeblich ist der jeweils **nächste** Start einer Klasse.
+ *
+ * Bewusst nicht kanonisch (E, 1, 2 …) sortiert: Am Steg zählt, was als Nächstes
+ * kommt. Verzahnt springt die Folge ohnehin zwischen den Klassen hin und her;
+ * diese Liste zieht daraus je Klasse den ersten Auftritt heraus.
+ */
+export function classesByNextStart(rt: ParcoursRuntime, klasseOf: KlasseOf): ClassId[] {
+  const seen: ClassId[] = []
+  for (const slot of releasedSlots(rt)) {
+    const klasse = klasseOf(slot.starterId)
+    if (klasse && !seen.includes(klasse)) seen.push(klasse)
+  }
+  return seen
+}
+
+/**
+ * Zieht eine Klasse in der Startfolge vor bzw. schiebt sie zurück: Sie kommt
+ * künftig dort an die Reihe, wo bisher `before` an der Reihe war. `before`
+ * gleich `null` heißt „als Letzte".
+ *
+ * Der Griff für den Fall, dass eine Klasse am Steg früher oder später bereit ist
+ * als geplant – etwa weil ein Boot noch getankt wird.
+ *
+ * Die **Spuren bleiben dabei erhalten**: Umsortiert werden die Klassen nur
+ * innerhalb ihrer eigenen Spur, der Wechsel-Faktor gilt weiter. Eine Klasse, die
+ * allein auf ihrer Spur liegt, lässt sich deshalb auch nicht verschieben – ihre
+ * Plätze gehören ihr ohnehin schon alle.
+ *
+ * Angefasst wird nur der Lauf, der gerade gefahren wird. Ausgesetzte Klassen
+ * bleiben außen vor; sie fahren ohnehin nicht.
+ */
+export function moveClassBefore(
+  rt: ParcoursRuntime,
+  klasse: ClassId,
+  before: ClassId | null,
+  tracks: TrackItem[][],
+  klasseOf: KlasseOf,
+): ParcoursRuntime {
+  if (klasse === before) return rt
+
+  const lauf = startableSlots(rt, klasseOf)[0]?.lauf
+  if (lauf === undefined) return rt
+
+  const order = classesByNextStart(rt, klasseOf).filter((k) => !isClassPaused(rt, k))
+  if (!order.includes(klasse)) return rt
+
+  const rest = order.filter((k) => k !== klasse)
+  const at = before === null ? rest.length : rest.indexOf(before)
+  if (at < 0) return rt
+
+  const neu = [...rest.slice(0, at), klasse, ...rest.slice(at)]
+  if (neu.every((k, i) => k === order[i])) return rt
+
+  return reinterleaveOpen(rt, tracks, klasseOf, { order: neu, nurLauf: lauf })
 }
 
 /**

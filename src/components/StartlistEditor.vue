@@ -4,7 +4,7 @@ import draggable from 'vuedraggable'
 import type { Parcours, ParcoursRuntime, StartSlot } from '../types'
 import { useStore } from '../state/store'
 import { classColor } from '../lib/classes'
-import { laeufeOf, nextReleasableLauf, type LaufAnchor } from '../lib/startlist'
+import { isClassPaused, laeufeOf, nextReleasableLauf, type LaufAnchor } from '../lib/startlist'
 import { sortedByClassThenStartNr } from '../lib/startnumbers'
 import { uid } from '../lib/ids'
 
@@ -58,6 +58,16 @@ const candidates = computed(() =>
 
 function starterOf(slot: StartSlot) {
   return store.starterById(slot.starterId)
+}
+
+/**
+ * Setzt die Klasse dieses Starts gerade aus? Diese Starts stehen am Ende ihres
+ * Laufs und warten aufs Boot – ohne Kennzeichnung sähe die Liste aus, als sei
+ * dort willkürlich umsortiert worden.
+ */
+function ausgesetzt(slot: StartSlot): boolean {
+  const klasse = starterOf(slot)?.klasse
+  return !!klasse && isClassPaused(props.runtime, klasse)
 }
 
 function move(slot: StartSlot, delta: number): void {
@@ -226,7 +236,12 @@ function statusLabel(slot: StartSlot): string {
           @end="onDragEnd"
         >
           <template #item="{ element: slot, index }">
-            <tr :class="[slot.status, { gesperrt: slot.lauf > runtime.releasedLauf }]">
+            <tr
+              :class="[
+                slot.status,
+                { gesperrt: slot.lauf > runtime.releasedLauf, ausgesetzt: ausgesetzt(slot) },
+              ]"
+            >
               <td>
                 <span
                   class="grip"
@@ -256,9 +271,12 @@ function statusLabel(slot: StartSlot): string {
               <td>{{ slot.lauf }}</td>
               <td
                 class="small"
-                :class="{ dim: slot.status === 'done', warn: slot.status === 'deferred' }"
+                :class="{
+                  dim: slot.status === 'done',
+                  warn: slot.status === 'deferred' || ausgesetzt(slot),
+                }"
               >
-                {{ statusLabel(slot) }}
+                {{ ausgesetzt(slot) ? 'Klasse setzt aus' : statusLabel(slot) }}
               </td>
               <td>
                 <select
@@ -371,6 +389,11 @@ tr.gesperrt td:not(:first-child) {
 
 tr.deferred td {
   background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+/* Klasse setzt aus (Boot defekt): steht am Ende des Laufs und wartet. */
+tr.ausgesetzt td:not(:first-child) {
+  opacity: 0.6;
 }
 
 .grip,
