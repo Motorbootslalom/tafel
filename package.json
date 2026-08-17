@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cloud": "node --test 'cloud/src/*.test.mjs'",
+    "test:cloud": "node --test 'cloud/src/*.test.mjs' 'cloudflare/src/*.test.mjs'",
     "check": "vue-tsc -b && vitest run && npm run test:cloud",
     "prepare": "git config core.hooksPath .githooks || true"
   },

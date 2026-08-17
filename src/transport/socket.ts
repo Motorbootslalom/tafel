@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { envelope, isEnvelope, type Envelope, type Message } from './protocol'
+import { KEEPALIVE, envelope, isEnvelope, type Envelope, type Message } from './protocol'
 import type { ConnectionStatus, Transport, TransportKind } from './types'
 
 /** Abstände der Wiederverbindungsversuche (ms) – erst schnell, dann geduldig. */
@@ -19,7 +19,7 @@ export interface SocketOptions {
 
 /**
  * Transport über ein Relais – identisch für das lokale Mini-Binary (`lan`) und
- * für AWS API Gateway (`cloud`); nur die URL unterscheidet sich.
+ * für ein Relais im Internet (`cloud`); nur die URL unterscheidet sich.
  *
  * Das Relais leitet ausschließlich weiter. Rechte prüft der Host, deshalb ist
  * das Relais auch dann unkritisch, wenn es in der Cloud steht.
@@ -95,7 +95,7 @@ export class SocketTransport implements Transport {
       for (const payload of this.queue.splice(0)) socket.send(payload)
       // Nach einem Reconnect kann der Zustand veraltet sein.
       this.send({ kind: 'request-state' })
-      this.pingTimer = setInterval(() => this.send({ kind: 'ping' }), PING_INTERVAL_MS)
+      this.pingTimer = setInterval(() => this.keepalive(), PING_INTERVAL_MS)
     }
 
     socket.onmessage = (ev) => this.receive(ev.data)
@@ -131,8 +131,17 @@ export class SocketTransport implements Transport {
       return
     }
     // Offline: Bedienbefehle nachreichen, sobald die Verbindung wieder steht.
-    // Pings sind dann bedeutungslos.
+    // Lebenszeichen sind dann bedeutungslos.
     if (msg.kind !== 'ping') this.queue.push(payload)
+  }
+
+  /**
+   * Lebenszeichen – als feste Zeichenkette, siehe {@link KEEPALIVE}. Es wandert
+   * bewusst **nicht** in die Warteschlange: Ohne Verbindung ist es gegenstandslos,
+   * und nachgereicht wäre es nur veraltet.
+   */
+  private keepalive(): void {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(KEEPALIVE)
   }
 
   onMessage(fn: (env: Envelope) => void): () => void {

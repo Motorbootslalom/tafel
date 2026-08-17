@@ -10,11 +10,32 @@ import { uid } from '../lib/ids'
  *
  * Bewusst simpel gehalten: Der **Host** ist die einzige Wahrheit. Clients
  * schicken Actions, der Host prüft die Rechte, wendet sie an und sendet den
- * neuen Gesamtzustand zurück. Ein Relais (lokales Binary oder AWS) leitet nur
+ * neuen Gesamtzustand zurück. Ein Relais (lokales Binary oder Cloud) leitet nur
  * weiter und kennt den Inhalt nicht.
  */
 
 export const PROTOCOL_VERSION = 1
+
+/**
+ * Lebenszeichen gegen Zwischenstationen, die stille Verbindungen abräumen.
+ *
+ * Bewusst eine **feste** Zeichenkette und kein Umschlag. Cloudflare kann eine
+ * exakt übereinstimmende Nachricht in der Laufzeitumgebung beantworten, ohne das
+ * Durable Object zu wecken (`setWebSocketAutoResponse`) – und die Abrechnung
+ * dort zählt Verbindungsdauer, nicht Rechenzeit. Ein Umschlag trägt eine
+ * zufällige ID und einen Zeitstempel, sähe also jedes Mal anders aus und könnte
+ * nie übereinstimmen; das Objekt würde alle 25 Sekunden geweckt und käme nie zum
+ * Schlafen.
+ *
+ * Alle Relais verwerfen die Zeichenkette von sich aus: `server/hub.go` scheitert
+ * am Einlesen in eine Struktur, `cloud/src/relay.mjs` gibt in `parseHead` `null`
+ * zurück. Und der Client verwirft die Antwort, weil sie kein gültiger Umschlag
+ * ist. Es war also an keinem Relais etwas zu ändern.
+ */
+export const KEEPALIVE = '"ping"'
+
+/** Womit ein Relais das Lebenszeichen beantworten darf. Der Client verwirft es. */
+export const KEEPALIVE_ANSWER = '"pong"'
 
 export type Message =
   /** Client meldet sich an – mit Geräte-Code oder gescanntem QR-Token. */
@@ -47,7 +68,10 @@ export type Message =
    * Geht nur über den Kanal im Browser.
    */
   | { kind: 'relay-status'; status: RelayStatus }
-  /** Lebenszeichen, damit Relais die Verbindung nicht abräumen. */
+  /**
+   * Lebenszeichen als Umschlag – so schickten es ältere Fassungen. Aktuell
+   * geht dafür {@link KEEPALIVE} über die Leitung; die Relais verwerfen beides.
+   */
   | { kind: 'ping' }
 
 export interface Envelope {

@@ -13,7 +13,7 @@ import { buildLabel } from '../lib/build'
  * - **Lokales Netz** – das Mini-Programm aus `server/` läuft auf dem
  *   Bedienrechner und öffnet einen WebSocket im WLAN oder Handy-Hotspot. Der
  *   Weg für den Wettkampfort ohne Internet.
- * - **Internet (AWS)** – dasselbe Protokoll über API Gateway; nur sinnvoll, wenn
+ * - **Internet (Cloud)** – dasselbe Protokoll über ein Relais im Netz; nur sinnvoll, wenn
  *   vor Ort verlässlich Netz da ist.
  *
  * Liefert das Mini-Programm die Seite selbst aus, muss die Adresse nicht
@@ -107,9 +107,7 @@ const statusText = computed(() => {
 })
 
 const placeholder = computed(() =>
-  kind.value === 'cloud'
-    ? 'wss://abc123.execute-api.eu-central-1.amazonaws.com/prod'
-    : 'ws://192.168.1.20:8080/ws',
+  kind.value === 'cloud' ? 'wss://tafel-relais.example.workers.dev/ws' : 'ws://192.168.1.20:8080/ws',
 )
 </script>
 
@@ -144,8 +142,9 @@ const placeholder = computed(() =>
         </template>
       </template>
       <template v-else>
-        Setzt verlässliches Internet am Wettkampfort voraus. Aufbau siehe Ordner
-        <span class="mono">cloud/</span>.
+        Setzt verlässliches Internet am Wettkampfort voraus. Welcher Anbieter dahintersteht,
+        entscheidet allein die Adresse – Aufbau siehe <span class="mono">cloud/</span> (AWS) oder
+        <span class="mono">cloudflare/</span>.
       </template>
     </p>
 

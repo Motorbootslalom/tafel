@@ -6,7 +6,8 @@ import type { Envelope, Message } from './protocol'
  *
  * - `local` – zwei Fenster desselben Browsers (Basis-Version, kein Server)
  * - `lan`   – über das lokale Mini-Binary im WLAN/Hotspot am Wettkampfort
- * - `cloud` – über AWS (API Gateway WebSocket), wenn Internet verfügbar ist
+ * - `cloud` – über ein Relais im Internet, wenn die Geräte nicht im selben
+ *             Netz hängen. An welchen Anbieter, entscheidet allein die Adresse.
  */
 export type TransportKind = 'local' | 'lan' | 'cloud'
 
@@ -29,5 +30,5 @@ export interface Transport {
 export const KIND_LABEL: Record<TransportKind, string> = {
   local: 'Dieser Rechner',
   lan: 'Lokales Netz',
-  cloud: 'Internet (AWS)',
+  cloud: 'Internet (Cloud)',
 }

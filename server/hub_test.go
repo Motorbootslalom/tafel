@@ -88,6 +88,16 @@ func send(t *testing.T, p *peer, from, to, kind string) {
 	}
 }
 
+// sendRaw schickt beliebigen Text – für alles, was kein Umschlag ist.
+func sendRaw(t *testing.T, p *peer, payload string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := p.ws.Write(ctx, websocket.MessageText, []byte(payload)); err != nil {
+		t.Fatalf("Senden fehlgeschlagen: %v", err)
+	}
+}
+
 // expect wartet auf die nächste Nachricht und prüft ihre Art.
 func expect(t *testing.T, p *peer, want string) {
 	t.Helper()
@@ -293,6 +303,29 @@ func TestPingWirdNichtWeitergeleitet(t *testing.T) {
 
 	send(t, client, "phone", "", "ping")
 	expectSilence(t, host)
+}
+
+// Das Lebenszeichen der Anwendung ist keine Umschlag-Nachricht mehr, sondern die
+// feste Zeichenkette "ping" – nur so kann Cloudflare es beantworten, ohne das
+// Durable Object zu wecken (siehe cloudflare/README.md). Hier bleibt deshalb
+// festgehalten, dass dieses Relais sie verträgt: still verwerfen, Verbindung
+// offen lassen, danach weiterarbeiten.
+func TestFestesLebenszeichenStoertNicht(t *testing.T) {
+	_, url := startServer(t)
+	host := dial(t, url, "room=r&device=host&role=host&key="+testKey)
+	client := dial(t, url, "room=r&device=phone")
+
+	send(t, client, "phone", "", "hello")
+	expect(t, host, "hello")
+	send(t, host, "host", "phone", "welcome")
+	expect(t, client, "welcome")
+
+	sendRaw(t, client, `"ping"`)
+	expectSilence(t, host)
+
+	// Die Verbindung muss danach unverändert nutzbar sein.
+	send(t, client, "phone", "", "action")
+	expect(t, host, "action")
 }
 
 func TestNeuerHostVerdraengtDenAlten(t *testing.T) {

@@ -141,7 +141,7 @@ onMounted(() => {
             Art
             <select v-model="kind">
               <option value="lan">Lokales Netz</option>
-              <option value="cloud">Internet (AWS)</option>
+              <option value="cloud">Internet (Cloud)</option>
             </select>
           </label>
         </div>

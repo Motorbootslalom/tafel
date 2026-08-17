@@ -80,7 +80,8 @@ function toggleParcours(id: string): void {
 
     <p v-if="!remoteReady" class="hint warn">
       Aktuell läuft nur dieser Rechner (Basis-Version). Für Handys am Steg zuerst unter
-      „Verbindung" ein Relais einrichten – das lokale Mini-Programm im WLAN oder AWS.
+      „Verbindung" ein Relais einrichten – das lokale Mini-Programm im WLAN oder eines
+      im Internet.
     </p>
 
     <template v-else>

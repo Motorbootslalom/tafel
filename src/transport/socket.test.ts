@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SocketTransport } from './socket'
-import { envelope, type Envelope } from './protocol'
+import { KEEPALIVE, envelope, type Envelope } from './protocol'
 
 /**
  * Am See reißt die Verbindung ab – das ist der Normalfall, nicht die Ausnahme.
@@ -57,7 +57,11 @@ class FakeSocket {
 
   /** Die Nachrichten-Arten, die über diese Verbindung gingen. */
   kinds(): string[] {
-    return this.sent.map((s) => (JSON.parse(s) as Envelope).msg.kind)
+    return this.sent.flatMap((s) => {
+      // Das Lebenszeichen ist kein Umschlag, sondern eine feste Zeichenkette.
+      const parsed: unknown = JSON.parse(s)
+      return parsed && typeof parsed === 'object' ? [(parsed as Envelope).msg.kind] : []
+    })
   }
 }
 
@@ -126,14 +130,30 @@ describe('SocketTransport', () => {
     t.stop()
   })
 
+  it('schickt das Lebenszeichen als feste Zeichenkette', async () => {
+    // Nur so kann Cloudflare es in der Laufzeitumgebung beantworten, ohne das
+    // Durable Object zu wecken – verglichen wird auf exakte Zeichengleichheit.
+    // Ein Umschlag trüge eine zufällige ID und einen Zeitstempel.
+    const t = make()
+    await t.start()
+    latest().open()
+    latest().sent.length = 0
+
+    vi.advanceTimersByTime(25_000)
+
+    expect(latest().sent).toEqual([KEEPALIVE])
+    t.stop()
+  })
+
   it('sammelt keine Lebenszeichen an, während die Verbindung fehlt', async () => {
+    // Nachgereicht wäre es nur veraltet – anders als ein Bedienbefehl.
     const t = make()
     await t.start()
 
-    t.send({ kind: 'ping' })
+    vi.advanceTimersByTime(60_000)
     latest().open()
 
-    expect(latest().kinds()).not.toContain('ping')
+    expect(latest().sent).not.toContain(KEEPALIVE)
     t.stop()
   })
 

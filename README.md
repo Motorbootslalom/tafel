@@ -112,7 +112,7 @@ npm run build     # nach dist/, läuft auf GitHub Pages
 
 ### Mit Handys am Steg
 
-Dafür braucht es eine Verbindung zwischen den Geräten – zwei Wege:
+Dafür braucht es eine Verbindung zwischen den Geräten – drei stehen bereit:
 
 - **[`server/`](server/)** – ein Mini-Programm (eine Datei, kein Installer) für
   den Bedienrechner. Es liefert die Anwendung im WLAN oder Handy-Hotspot aus und
@@ -120,6 +120,103 @@ Dafür braucht es eine Verbindung zwischen den Geräten – zwei Wege:
   verlässliche Weg.
 - **[`cloud/`](cloud/)** – dasselbe über AWS (API Gateway WebSocket, Lambda,
   DynamoDB), wenn vor Ort verlässlich Netz steht.
+- **[`cloudflare/`](cloudflare/)** – dasselbe als Worker mit Durable Object.
+  Deutlich weniger bewegliche Teile als die AWS-Fassung und im kostenlosen Tarif;
+  ausgerollt wurde es allerdings noch nie.
+
+Alle drei sind Umsetzungen derselben, kleinen Aufgabe; weitere Wege stehen unten.
+
+## Andere Wege für die Verbindung
+
+Das Relais ist bewusst dumm: 85 Zeilen Weiterleitungsregeln
+([`cloud/src/relay.mjs`](cloud/src/relay.mjs)), ohne jede Kenntnis von
+Starterlisten oder Rechten. Eine weitere Variante muss nur vier Dinge erfüllen:
+
+1. Ein WebSocket-Endpunkt. Raum, Geräte-ID und Rolle kommen als Query-Parameter
+   (`src/transport/socket.ts`).
+2. Weiterleiten nach den Regeln aus `relay.mjs`: vom Host an alle oder gezielt,
+   von Geräten ausschließlich an den Host.
+3. Wer nicht freigegeben ist, darf nur eine Anmeldung schicken.
+4. Den zuletzt verteilten Gesamtzustand je Raum vorhalten, damit ein Handy nach
+   einem Verbindungsabbruch sofort wieder aktuell ist.
+
+In der Anwendung ist dafür nichts anzupassen: Die Betriebsart `cloud` ist nicht
+an AWS gebunden, sie hängt allein an der eingetragenen Adresse.
+
+### Die Randbedingung, die alles bestimmt
+
+Wird die Anwendung über **https** geladen (GitHub Pages), verweigert der Browser
+jede `ws://`-Verbindung. Genau deshalb liefert das lokale Programm die Anwendung
+selbst aus – Seite und Relais sind dann beide `http://` im LAN, und es passt.
+Jeder Weg über das Internet braucht dagegen zwingend `wss://` mit gültigem
+Zertifikat. Das ist der eigentliche Aufwand, nicht der Server.
+
+### Übersicht
+
+| Weg | Ohne Internet | Aufwand | Kosten |
+| --- | --- | --- | --- |
+| `server/` lokal | **ja** | fertig | – |
+| `server/` + Cloudflare Tunnel | ja, Tunnel nur für Auswärtige | Konfiguration, kein Code | – |
+| `server/` auf einem kleinen VPS | nein | Deployment + TLS-Proxy | ~4–5 €/Monat |
+| `server/` auf Fly.io / Railway / Render | nein | Container | tarifabhängig |
+| `cloud/` (AWS) | nein | fertig | Centbeträge je Veranstaltung |
+| [Cloudflare Worker + Durable Object](cloudflare/) | nein | Worker um `relay.mjs` herum | im kostenlosen Tarif |
+| Tailscale / ZeroTier statt Relais | teilweise | VPN auf jedem Gerät | für kleine Netze kostenlos |
+| Ably / Pusher / Supabase Realtime | nein | Adapter + Rechte-Token | Freikontingente – siehe Warnung |
+
+**Den lokalen Server durchreichen** ist der unterschätzte Weg: Ein Cloudflare
+Tunnel vor das laufende Go-Programm liefert eine `wss://`-Adresse samt
+Zertifikat, kostenlos. Am See ohne Netz läuft alles wie bisher; sitzt jemand
+woanders, kommt der Tunnel dazu. Vor allem kommt **kein zweiter Code-Pfad**
+hinzu – die Regeln liegen heute schon zweimal vor (`server/hub.go` und
+`cloud/src/relay.mjs`) und müssen von Hand synchron gehalten werden.
+
+### Cloudflare Worker + Durable Object
+
+Von den Fremd-Diensten der geringste Aufwand: Ein Durable Object je Raum
+entspricht fast wörtlich dem Hub aus `server/hub.go`, samt Zustandsspeicher. Das
+Nachschlagen, welche Verbindungen zu einem Raum gehören – bei AWS der aufwendige
+Teil – fällt ersatzlos weg. `relay.mjs` ist bereits JavaScript und wird mitsamt
+seinen Tests übernommen; neu ist nur die Anbindung, wie heute `handler.mjs` für
+AWS. Damit sinkt die Zahl der Umsetzungen derselben Regeln von drei auf zwei.
+
+Überschlag für einen Wettkampftag (8 Geräte, 10 Stunden, ~600 Zustands-Verteilungen):
+
+| Posten | Verbrauch | Kostenloser Tarif |
+| --- | --- | --- |
+| Requests | ~640 | 100 000 / Tag |
+| Duration | ~4 600 GB-s | 13 000 GB-s / Tag |
+| Speicher | ~90 kB | 5 GB |
+
+Ein Wettkampftag passt also mit großem Abstand in den kostenlosen Tarif. Zwei
+Dinge sind dabei nicht offensichtlich: Cloudflare rechnet eingehende
+WebSocket-Nachrichten im Verhältnis 20 : 1, und den Löwenanteil machen ohnehin
+nicht die Starts aus, sondern die Lebenszeichen alle 25 Sekunden. Und die
+Duration zählt **Verbindungsdauer**, nicht Rechenzeit – ein offener WebSocket
+kostet, auch wenn nichts passiert.
+
+Genau daran hängt der einzige Punkt, an dem das bestehende Protokoll nicht passt:
+Die Hibernation-API stoppt die Duration nach zehn untätigen Sekunden, aber
+unsere Lebenszeichen würden das Objekt dauernd wecken. Die Auto-Antwort der
+Laufzeitumgebung vergleicht auf exakte Zeichengleichheit – unser Lebenszeichen
+ist ein Umschlag mit zufälliger ID und Zeitstempel und sieht jedes Mal anders
+aus. Das Lebenszeichen ist deshalb jetzt eine feste Zeichenkette – an den
+bestehenden Relais war dafür nichts zu ändern, was als Test festgehalten ist.
+**Umsetzung und Einrichtung: [`cloudflare/`](cloudflare/).**
+
+### Vorsicht bei fertigen Pub/Sub-Diensten
+
+Ably, Pusher, Supabase Realtime oder ein MQTT-Broker sehen verlockend aus, weil
+gar kein Relais mehr zu schreiben wäre. Bei einem reinen Broadcast-Kanal fällt
+aber die Regel „wer nicht freigegeben ist, darf nur eine Anmeldung schicken"
+ersatzlos weg. Wer den Kanalnamen kennt, könnte dann gefälschte
+`state`-Nachrichten an die Handys schicken und ihnen eine andere Tafel
+unterschieben. Der Host prüft zwar weiterhin jede Änderung – die **Anzeige**
+ließe sich trotzdem manipulieren.
+
+Wiederherstellen lässt sich das nur über kanalgenaue Rechte-Token (Ably kann
+das). Damit ist man beim Aufwand aber schon nahe an einem eigenen Worker – und
+hat sich eine Abhängigkeit eingehandelt, die das Relais heute nicht hat.
 
 ## Wie es aufgebaut ist
 
@@ -131,6 +228,7 @@ src/views/       Die fünf Ansichten
 src/components/  Bausteine der Bedienoberfläche
 server/          Lokales Relais (Go, eine Datei)
 cloud/           Relais in AWS (SAM)
+cloudflare/      Relais als Worker + Durable Object
 ```
 
 Drei Entscheidungen tragen den Rest:
