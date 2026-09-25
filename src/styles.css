@@ -530,7 +530,9 @@ th {
 .board-previous {
   font-size: calc(var(--u) * 0.075 * var(--info-scale) * var(--fit-scale));
   font-weight: 700;
-  color: #8b96a5;
+  /* Das frühere Grau (#8b96a5) war aus 50 m kaum zu lesen. Heller, aber nicht
+     weiß wie der aktuelle Starter. */
+  color: #c2cad4;
   margin-top: calc(var(--u) * 0.015);
 }
 
