@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useStore } from '../state/store'
 import { navigate, viewUrl, type ViewName } from '../lib/router'
 import { KIND_LABEL } from '../transport'
-import { ROLE_LABEL } from '../state/permissions'
+import { ROLE_LABEL, mayManage } from '../state/permissions'
 
 const props = defineProps<{ active: ViewName }>()
 const store = useStore()
@@ -49,7 +49,7 @@ const links: { view: ViewName; label: string }[] = [
 ]
 
 const visible = computed(() =>
-  links.filter((l) => (l.view === 'admin' ? store.role.value === 'admin' : true)),
+  links.filter((l) => (l.view === 'admin' ? mayManage(store.role.value) : true)),
 )
 </script>
 

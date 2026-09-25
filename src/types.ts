@@ -201,11 +201,12 @@ export interface BoardConfig {
  * Rolle eines verbundenen Geräts.
  *
  * - `admin`  – darf alles (Starterliste, Konfiguration, Geräte)
+ * - `poweruser` – wie `admin`, aber ohne Geräte, Sicherung und Zurücksetzen
  * - `steg`   – darf die ihm zugewiesenen Parcours weiterschalten und melden
  * - `board`  – reine Anzeige (Tafel-Fenster)
  * - `viewer` – reine Startlisten-Ansicht für Zuschauer
  */
-export type Role = 'admin' | 'steg' | 'board' | 'viewer'
+export type Role = 'admin' | 'poweruser' | 'steg' | 'board' | 'viewer'
 
 export interface DeviceGrant {
   deviceId: string
@@ -213,8 +214,8 @@ export interface DeviceGrant {
   name: string
   role: Role
   /**
-   * Parcours, die dieses Gerät bedienen darf. Leer = keine. Für `admin`
-   * bedeutungslos (darf immer alle).
+   * Parcours, die dieses Gerät bedienen darf. Leer = keine. Für `admin` und
+   * `poweruser` bedeutungslos (dürfen immer alle).
    */
   parcoursIds: string[]
   /** Zeitpunkt der letzten Aktivität (ms), für die Geräteliste im Admin. */

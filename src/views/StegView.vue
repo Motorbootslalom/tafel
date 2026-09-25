@@ -4,16 +4,17 @@ import { useStore } from '../state/store'
 import AppNav from '../components/AppNav.vue'
 import StegPanel from '../components/StegPanel.vue'
 import { navigate } from '../lib/router'
+import { mayManage } from '../state/permissions'
 
 const store = useStore()
 
 /**
  * Ein Gerät sieht nur die Parcours, die es bedienen darf – am Steg soll niemand
- * versehentlich den anderen Parcours weiterschalten. Der Admin sieht alle.
+ * versehentlich den anderen Parcours weiterschalten. Admin und Poweruser sehen alle.
  */
 const parcoursList = computed(() =>
   store.state.parcoursList.filter(
-    (p) => store.role.value === 'admin' || store.mayOperate(p.id) || store.role.value === 'viewer',
+    (p) => store.mayOperate(p.id) || store.role.value === 'viewer',
   ),
 )
 
@@ -39,7 +40,7 @@ const hasStartlist = computed(() => store.state.runtimes.some((rt) => rt.slots.l
       <p class="dim">
         In der Verwaltung zuerst die Starterliste importieren und die Startlisten erzeugen.
       </p>
-      <button v-if="store.role.value === 'admin'" class="primary" @click="navigate('admin')">
+      <button v-if="mayManage(store.role.value)" class="primary" @click="navigate('admin')">
         Zur Verwaltung
       </button>
     </div>

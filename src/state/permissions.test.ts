@@ -77,6 +77,26 @@ describe('canPerform', () => {
     ).toBe(false)
   })
 
+  it('lässt den Poweruser Stammdaten, Tafel und alle Parcours pflegen', () => {
+    const power = grantOf('poweruser')
+    expect(canPerform(importieren, power)).toBe(true)
+    expect(canPerform({ type: 'REMOVE_STARTER', starterId: 's1' }, power)).toBe(true)
+    expect(canPerform({ type: 'GENERATE_ALL_STARTLISTS' }, power)).toBe(true)
+    expect(canPerform({ type: 'SET_BOARD', patch: { scale: 2 } }, power)).toBe(true)
+    // Keine Parcours zugewiesen und trotzdem am Steg: Er bedient alle.
+    expect(canPerform(weiterschalten, power)).toBe(true)
+    expect(canPerform({ ...weiterschalten, parcoursId: 'land' }, power)).toBe(true)
+  })
+
+  it('lässt den Poweruser nicht an Geräte, Sicherung und Zurücksetzen', () => {
+    const power = grantOf('poweruser')
+    // Sonst könnte er sich selbst zum Admin machen oder den Bedienrechner aussperren.
+    expect(canPerform({ type: 'UPSERT_DEVICE', grant: grantOf('admin') }, power)).toBe(false)
+    expect(canPerform({ type: 'REMOVE_DEVICE', deviceId: 'dev_2' }, power)).toBe(false)
+    expect(canPerform({ type: 'RESET' }, power)).toBe(false)
+    expect(canPerform({ type: 'LOAD_STATE', state: {} as never }, power)).toBe(false)
+  })
+
   it('lässt Steg mit mehreren Parcours beide bedienen', () => {
     const steg = grantOf('steg', ['see', 'land'])
     expect(canPerform(weiterschalten, steg)).toBe(true)

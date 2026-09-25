@@ -28,6 +28,7 @@ function wirkung(grant: DeviceGrant): string {
       .map((p) => p.name)
     return namen.length ? `bedient ${namen.join(', ')}` : 'bedient nichts – kein Parcours gewählt'
   }
+  if (grant.role === 'poweruser') return 'pflegt Starterliste und Tafel, bedient alle Parcours'
   if (grant.role === 'viewer') return 'sieht nur die Startliste'
   if (grant.role === 'board') return 'zeigt nur die Tafel'
   return 'darf alles'

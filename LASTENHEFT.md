@@ -170,6 +170,7 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | P-10 | Mehrere Fenster auf dem Bedienrechner (Tafel, Verwaltung, Steg) sehen einander in **jeder** Betriebsart. Zum Relais verbindet nur eines von ihnen – ein zweites würde das erste verdrängen. |
 | P-11 | Eine Sicherung lässt sich wieder einspielen. Das ist der Weg von der Basis- in die Pro-Version: Beide laufen unter verschiedenen Herkünften (`file://` bzw. `http://…`) und haben getrennte Browser-Speicher. |
 | P-12 | Die Rechte sind Teil des Zustands: Sie überleben einen Neustart und stecken in jeder Sicherung.       |
+| P-13 | Ein Gerät kann **Poweruser** werden: Es pflegt Starterliste, Startlisten, Tafel-Darstellung und Zeiten und bedient alle Parcours. Geräte freischalten, Rechte vergeben, Sicherungen einspielen und Zurücksetzen bleiben dem Bedienrechner vorbehalten – sonst könnte sich ein Handy selbst alle Rechte geben oder den Bedienrechner aussperren. Die Daten bleiben beim Host; der Poweruser schickt nur Änderungen. |
 
 ## 10. Abgrenzung
 

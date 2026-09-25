@@ -1,5 +1,5 @@
 import type { DeviceGrant, Role } from '../types'
-import { OPERATOR_ACTIONS, actionParcoursId, type Action } from './actions'
+import { ADMIN_ONLY_ACTIONS, OPERATOR_ACTIONS, actionParcoursId, type Action } from './actions'
 
 /**
  * Rechteprüfung für eingehende Actions.
@@ -14,6 +14,11 @@ export function canPerform(action: Action, grant: DeviceGrant | null): boolean {
   switch (grant.role) {
     case 'admin':
       return true
+
+    case 'poweruser':
+      // Pflegt Starterliste und Tafel und bedient alle Parcours – die Geräte
+      // und das Ersetzen des ganzen Zustands bleiben beim Bedienrechner.
+      return !ADMIN_ONLY_ACTIONS.has(action.type)
 
     case 'steg': {
       // Stegpersonal darf nur den Betrieb der ihm zugewiesenen Parcours steuern.
@@ -43,6 +48,7 @@ export function grantFor(devices: DeviceGrant[], deviceId: string): DeviceGrant 
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin',
+  poweruser: 'Poweruser',
   steg: 'Steg',
   board: 'Tafel',
   viewer: 'Zuschauer',
@@ -50,10 +56,16 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export const ROLE_HINT: Record<Role, string> = {
   admin: 'Darf alles: Starterliste, Konfiguration und Geräte.',
+  poweruser: 'Darf Starterliste, Startlisten und Tafel pflegen und alle Parcours bedienen – nur keine Geräte verwalten.',
   steg: 'Darf die zugewiesenen Parcours weiterschalten und Meldungen setzen.',
   board: 'Reine Anzeige auf der Wettkampftafel.',
   viewer: 'Sieht nur die Startliste.',
 }
 
+/** Darf dieses Gerät die Verwaltung öffnen? */
+export function mayManage(role: Role): boolean {
+  return role === 'admin' || role === 'poweruser'
+}
+
 /** Rollen, die ein Admin einem mobilen Gerät zuweisen kann. */
-export const ASSIGNABLE_ROLES: Role[] = ['steg', 'viewer', 'board']
+export const ASSIGNABLE_ROLES: Role[] = ['steg', 'poweruser', 'viewer', 'board']

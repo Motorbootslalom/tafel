@@ -97,6 +97,18 @@ export const OPERATOR_ACTIONS: ReadonlySet<ActionType> = new Set<ActionType>([
   'SET_MESSAGE',
 ])
 
+/**
+ * Actions, die dem Bedienrechner vorbehalten bleiben. Wer Geräte freigibt, kann
+ * sich selbst und anderen alles geben; eine Sicherung oder das Zurücksetzen
+ * ersetzt die ganze Veranstaltung.
+ */
+export const ADMIN_ONLY_ACTIONS: ReadonlySet<ActionType> = new Set<ActionType>([
+  'UPSERT_DEVICE',
+  'REMOVE_DEVICE',
+  'LOAD_STATE',
+  'RESET',
+])
+
 /** Der Parcours, auf den sich eine Action bezieht (falls überhaupt einer). */
 export function actionParcoursId(action: Action): string | null {
   return 'parcoursId' in action ? action.parcoursId : null

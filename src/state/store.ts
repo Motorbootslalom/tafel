@@ -230,7 +230,7 @@ export function createStore(): Store {
   function mayOperate(parcoursId: string): boolean {
     const g = grant.value
     if (!g) return false
-    if (g.role === 'admin') return true
+    if (g.role === 'admin' || g.role === 'poweruser') return true
     return g.role === 'steg' && g.parcoursIds.includes(parcoursId)
   }
 

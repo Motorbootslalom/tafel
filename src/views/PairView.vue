@@ -4,7 +4,7 @@ import { useStore } from '../state/store'
 import { navigate } from '../lib/router'
 import { formatCode, normalizeCode } from '../lib/pairing'
 import { suggestDeviceName } from '../lib/deviceName'
-import { ROLE_LABEL } from '../state/permissions'
+import { ROLE_LABEL, mayManage } from '../state/permissions'
 
 /**
  * Anmeldung eines mobilen Bediengeräts.
@@ -64,7 +64,7 @@ watch(
   () => store.grant.value,
   (grant) => {
     if (grant && grant.role !== 'admin') {
-      navigate(grant.role === 'viewer' ? 'liste' : 'steg')
+      navigate(grant.role === 'viewer' ? 'liste' : grant.role === 'poweruser' ? 'admin' : 'steg')
     }
   },
 )
@@ -93,7 +93,18 @@ onMounted(() => {
             .join(', ')
         }}
       </p>
-      <button class="primary" @click="navigate('steg')">Zur Steg-Bedienung</button>
+      <div class="row">
+        <button
+          v-if="mayManage(store.grant.value.role)"
+          class="primary"
+          @click="navigate('admin')"
+        >
+          Zur Verwaltung
+        </button>
+        <button :class="{ primary: !mayManage(store.grant.value.role) }" @click="navigate('steg')">
+          Zur Steg-Bedienung
+        </button>
+      </div>
     </div>
 
     <div v-else class="card stack">

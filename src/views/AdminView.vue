@@ -17,13 +17,23 @@ const store = useStore()
 type Tab = 'starter' | 'parcours' | 'startliste' | 'tafel' | 'geraete'
 const tab = ref<Tab>('starter')
 
-const tabs: { id: Tab; label: string }[] = [
-  { id: 'starter', label: 'Starter' },
-  { id: 'parcours', label: 'Parcours & Verzahnung' },
-  { id: 'startliste', label: 'Startlisten' },
-  { id: 'tafel', label: 'Tafel & Zeiten' },
-  { id: 'geraete', label: 'Geräte' },
-]
+/**
+ * Geräte, Sicherung und Zurücksetzen bleiben beim Bedienrechner – ein Poweruser
+ * bekommt sie gar nicht erst zu sehen. Durchgesetzt wird das ohnehin beim Host.
+ */
+const isAdmin = computed(() => store.role.value === 'admin')
+
+const tabs = computed(() =>
+  (
+    [
+      { id: 'starter', label: 'Starter' },
+      { id: 'parcours', label: 'Parcours & Verzahnung' },
+      { id: 'startliste', label: 'Startlisten' },
+      { id: 'tafel', label: 'Tafel & Zeiten' },
+      { id: 'geraete', label: 'Geräte' },
+    ] as { id: Tab; label: string }[]
+  ).filter((t) => isAdmin.value || t.id !== 'geraete'),
+)
 
 const runtimeOf = (id: string) => store.state.runtimes.find((rt) => rt.parcoursId === id)
 const hasStarters = computed(() => store.state.starters.length > 0)
@@ -189,11 +199,11 @@ function regenerateOne(parcoursId: string): void {
       <BoardConfigPanel />
       <TimingPanel />
 
-      <BackupPanel />
+      <BackupPanel v-if="isAdmin" />
     </template>
 
     <!-- Geräte ---------------------------------------------------------------->
-    <template v-else>
+    <template v-else-if="isAdmin">
       <ConnectionPanel />
       <PairingPanel />
       <DeviceList />
