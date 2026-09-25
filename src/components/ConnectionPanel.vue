@@ -106,6 +106,14 @@ const statusText = computed(() => {
   }
 })
 
+/** Eingetragen, aber so, dass der Browser nur „connection failed“ melden würde. */
+const adresseFragwuerdig = computed(() => {
+  const adresse = url.value.trim()
+  if (!adresse) return false
+  const schema = kind.value === 'cloud' ? 'wss://' : 'ws://'
+  return !adresse.startsWith(schema) || !adresse.endsWith('/ws')
+})
+
 const placeholder = computed(() =>
   kind.value === 'cloud' ? 'wss://tafel-relais.example.workers.dev/ws' : 'ws://192.168.1.20:8080/ws',
 )
@@ -161,6 +169,17 @@ const placeholder = computed(() =>
         Adresse des Relais
         <input v-model="url" :placeholder="placeholder" autocomplete="off" />
       </label>
+      <p v-if="!zeigeAuswahl" class="hint" :class="{ warn: adresseFragwuerdig }">
+        <template v-if="kind === 'cloud'">
+          Beginnt mit <span class="mono">wss://</span> (nicht <span class="mono">https://</span>)
+          und endet auf <span class="mono">/ws</span>, z. B.
+          <span class="mono">wss://tafel-relais.&lt;konto&gt;.workers.dev/ws</span>.
+        </template>
+        <template v-else>
+          Beginnt mit <span class="mono">ws://</span> und endet auf <span class="mono">/ws</span>,
+          z. B. <span class="mono">ws://192.168.1.20:8080/ws</span>.
+        </template>
+      </p>
 
       <div class="row small">
         <button v-if="zeigeAuswahl" @click="freieEingabe = true">Adresse von Hand eingeben</button>
