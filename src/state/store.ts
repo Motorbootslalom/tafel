@@ -35,7 +35,8 @@ import {
 } from '../transport'
 import { isForMe } from '../transport/protocol'
 import type { Action } from './actions'
-import { canPerform, grantFor } from './permissions'
+import { canPerform, grantFor, mayManage } from './permissions'
+import { currentRoute } from '../lib/router'
 import { initialState, klasseLookup, migrate, reduce } from './reducer'
 
 /**
@@ -93,6 +94,8 @@ export interface Store {
   closePairing(): void
   requestAccess(token: string, name: string): void
   answerPending(approve: boolean): void
+  /** Alle anderen Fenster und verbundenen Geräte neu laden – nach einem Update. */
+  reloadAll(): void
 }
 
 export const storeKey: InjectionKey<Store> = Symbol('tafel-store')
@@ -260,6 +263,11 @@ export function createStore(): Store {
     } else if (msg.kind === 'pairing') {
       // Ein anderes Fenster hat einen Anmelde-Code ausgegeben oder zurückgezogen.
       Object.assign(pairing, msg.pairing)
+    } else if (msg.kind === 'reload') {
+      // Hält dieses Fenster die Verbindung, gibt es den Befehl an die Geräte
+      // weiter, bevor es sich selbst neu lädt.
+      if (isHost.value) relay.value?.send({ kind: 'reload' })
+      reloadSoon()
     } else if (msg.kind === 'relay-status') {
       if (!relayLeader.value) foreignStatus.value = msg.status
     }
@@ -354,9 +362,53 @@ export function createStore(): Store {
         return
       }
 
+      case 'reload':
+        if (isHost.value) {
+          // Die Bitte eines Geräts – ein Gerät kann nicht selbst an alle senden.
+          // Befolgt wird sie nur von Admin und Poweruser.
+          const sender = state.devices.find((d) => d.deviceId === env.from)
+          if (!sender || !mayManage(sender.role)) return
+          reloadAll()
+          // Das Fenster mit der Verbindung lädt mit, es sei denn, am Rechner wird
+          // gerade in der Verwaltung gearbeitet. Sonst bliebe ausgerechnet die
+          // Tafel stehen, wenn sie die Verbindung hält.
+          if (currentRoute().view !== 'admin') reloadSoon()
+          return
+        }
+        // Auch die Schwesterfenster dieses Geräts, etwa eine geöffnete Startliste.
+        localBus.send({ kind: 'reload' })
+        reloadSoon()
+        return
+
       case 'ping':
         return
     }
+  }
+
+  /**
+   * Neu laden, sobald weitergereichte Nachrichten draußen sind. Ein sofortiges
+   * `reload()` schlösse die Verbindung, bevor der Befehl die Geräte erreicht.
+   */
+  function reloadSoon(): void {
+    setTimeout(() => window.location.reload(), 500)
+  }
+
+  /**
+   * Alle anderen Fenster dieses Rechners und alle verbundenen Geräte neu laden.
+   * Am Rechner bleibt dieses Fenster selbst stehen – hier wurde ja gerade
+   * geklickt. Klickt ein Poweruser, lädt sein Gerät mit: Es bekommt den Befehl
+   * wie alle anderen vom Host.
+   */
+  function reloadAll(): void {
+    if (!isHost.value) {
+      // Ein Gerät bittet den Host darum; der prüft die Rechte.
+      if (mayManage(role.value)) relay.value?.send({ kind: 'reload' })
+      return
+    }
+    localBus.send({ kind: 'reload' })
+    // Nur das führende Fenster hat eine Verbindung. Ist es ein anderes, reicht
+    // es den Befehl beim Empfang weiter (siehe handleLocal).
+    relay.value?.send({ kind: 'reload' })
   }
 
   // -------------------------------------------------------------------------
@@ -575,6 +627,7 @@ export function createStore(): Store {
     closePairing,
     requestAccess,
     answerPending,
+    reloadAll,
   }
 
   // Der Kanal zwischen den Fenstern läuft in jeder Betriebsart.

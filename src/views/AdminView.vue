@@ -11,6 +11,7 @@ import ConnectionPanel from '../components/ConnectionPanel.vue'
 import PairingPanel from '../components/PairingPanel.vue'
 import DeviceList from '../components/DeviceList.vue'
 import BackupPanel from '../components/BackupPanel.vue'
+import ReloadAll from '../components/ReloadAll.vue'
 import { buildLabel, commitLabel } from '../lib/build'
 
 const store = useStore()
@@ -201,6 +202,11 @@ function regenerateOne(parcoursId: string): void {
       <TimingPanel />
 
       <BackupPanel v-if="isAdmin" />
+      <!-- Der Admin findet den Knopf unter Geräte, den Reiter sieht der Poweruser nicht. -->
+      <section v-else class="card stack">
+        <h2>Geräte</h2>
+        <ReloadAll />
+      </section>
     </template>
 
     <!-- Geräte ---------------------------------------------------------------->

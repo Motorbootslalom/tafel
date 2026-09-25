@@ -53,6 +53,13 @@ export type Message =
   /** Host zieht Rechte zurück; der Client fällt auf „nur ansehen" zurück. */
   | { kind: 'revoked' }
   /**
+   * Host bittet alle Fenster und Geräte, sich neu zu laden – nach einem Update,
+   * damit nicht jedes Handy einzeln angefasst werden muss. Die Relais leiten
+   * unbekannte Nachrichten des Hosts ohnehin an alle weiter; von einem Gerät
+   * kommt sie nur beim Host an, und der befolgt sie nicht.
+   */
+  | { kind: 'reload' }
+  /**
    * Ausgegebene Anmelde-Codes zwischen den Fenstern dieses Browsers abgleichen.
    *
    * Der Code wird im Verwaltungsfenster ausgegeben, die Verbindung zum Relais

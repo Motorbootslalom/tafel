@@ -58,6 +58,15 @@ describe('route – Host', () => {
   it('verwirft eine Freigabe ohne Empfänger', () => {
     assert.deepEqual(route(msg('welcome'), host), { target: 'drop' })
   })
+
+  it('reicht die Bitte um Neuladen an alle Geräte weiter, ohne sie zu merken', () => {
+    // Gemerkt bekäme sie jedes Gerät, das sich später verbindet – und lüde neu.
+    assert.deepEqual(route(msg('reload'), host), { target: 'broadcast' })
+  })
+
+  it('lässt ein Gerät nicht alle anderen neu laden', () => {
+    assert.deepEqual(route(msg('reload'), freigegeben), { target: 'toHost' })
+  })
 })
 
 describe('parseHead', () => {

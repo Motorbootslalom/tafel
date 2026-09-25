@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useStore } from '../state/store'
+import ReloadAll from './ReloadAll.vue'
 import { ASSIGNABLE_ROLES, ROLE_LABEL } from '../state/permissions'
 import type { DeviceGrant, Role } from '../types'
 
@@ -46,6 +47,8 @@ function seen(ts: number): string {
 <template>
   <section class="card">
     <h2>Verbundene Geräte</h2>
+
+    <ReloadAll />
 
     <p v-if="!store.state.devices.length" class="dim">
       Noch kein Gerät freigeschaltet. Über „Gerät freischalten" einen Code ausgeben.
