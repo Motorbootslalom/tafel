@@ -496,11 +496,14 @@ th {
 
 /*
  * Name, Verein und Starter davor wirkten live auf der Tafel zu klein, die
- * Startnummer dagegen genau richtig. Der Faktor hebt die Angaben zum Starter
- * gemeinsam an, ohne die Nummer anzufassen.
+ * Startnummer dagegen genau richtig. `--info-scale` hebt Name und Verein bzw.
+ * Bundesland gemeinsam an, ohne die Nummer anzufassen. Der Starter davor hat
+ * einen eigenen Faktor: Er darf wachsen, aber nie größer werden als die
+ * Herkunft darüber – sonst läse man ihn für den aktuellen Starter.
  */
 .board-info {
-  --info-scale: 1.25;
+  --info-scale: 1.875;
+  --previous-scale: 2.375;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -528,9 +531,11 @@ th {
 }
 
 .board-previous {
-  font-size: calc(var(--u) * 0.075 * var(--info-scale) * var(--fit-scale));
+  font-size: calc(var(--u) * 0.075 * var(--previous-scale) * var(--fit-scale));
   font-weight: 700;
-  color: #8b96a5;
+  /* Heller als früher, damit er aus 50 m lesbar ist – aber nicht weiß wie der
+     aktuelle Starter. */
+  color: #c2cad4;
   margin-top: calc(var(--u) * 0.015);
 }
 
@@ -606,7 +611,7 @@ th {
 }
 
 .region-content.stacked .board-previous {
-  font-size: calc(var(--u) * 0.062 * var(--info-scale) * var(--fit-scale));
+  font-size: calc(var(--u) * 0.062 * var(--previous-scale) * var(--fit-scale));
 }
 
 .board-empty {
