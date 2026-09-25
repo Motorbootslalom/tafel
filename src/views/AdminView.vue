@@ -11,6 +11,7 @@ import ConnectionPanel from '../components/ConnectionPanel.vue'
 import PairingPanel from '../components/PairingPanel.vue'
 import DeviceList from '../components/DeviceList.vue'
 import BackupPanel from '../components/BackupPanel.vue'
+import { buildLabel, commitLabel } from '../lib/build'
 
 const store = useStore()
 
@@ -208,5 +209,9 @@ function regenerateOne(parcoursId: string): void {
       <PairingPanel />
       <DeviceList />
     </template>
+
+    <footer class="version-footer small dim">
+      Codestand <span class="mono">{{ commitLabel() }}</span> · gebaut {{ buildLabel() }}
+    </footer>
   </div>
 </template>

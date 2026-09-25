@@ -329,6 +329,23 @@ th {
   background: var(--danger);
 }
 
+/*
+ * Welche Fassung läuft? Nur auf dem Rechner – auf dem Handy kostet die Zeile
+ * Platz, und abgelesen wird der Stand ohnehin an der Verwaltung am Rechner.
+ */
+.version-footer {
+  margin-top: 2rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .version-footer {
+    display: none;
+  }
+}
+
 /* --- Tafel --------------------------------------------------------------- */
 
 .board {
