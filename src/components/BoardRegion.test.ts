@@ -28,6 +28,7 @@ const board: BoardConfig = {
   showPrevious: true,
   showParcoursName: true,
   showVorname: true,
+  showFlagge: true,
   scale: 1,
 }
 
@@ -110,6 +111,18 @@ describe('BoardRegion – laufender Starter', () => {
     const text = render(runtime(), { originMode: 'bundesland' }).text()
     expect(text).toContain('Brandenburg')
     expect(text).not.toContain('MTC Brandenburg e.V.')
+  })
+
+  it('setzt die Landesflagge vor das Bundesland', () => {
+    const flagge = render(runtime(), { originMode: 'bundesland' }).find('.board-origin img')
+    expect(flagge.exists()).toBe(true)
+    expect(flagge.attributes('src')).toContain('bb')
+  })
+
+  it('zeigt keine Flagge beim Verein oder wenn sie abgeschaltet ist', () => {
+    expect(render(runtime()).find('.board-origin img').exists()).toBe(false)
+    const aus = render(runtime(), { originMode: 'bundesland', showFlagge: false })
+    expect(aus.find('.board-origin img').exists()).toBe(false)
   })
 })
 

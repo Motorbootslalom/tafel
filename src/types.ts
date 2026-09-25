@@ -189,6 +189,8 @@ export interface BoardConfig {
   showParcoursName: boolean
   /** Vor- und Nachname anzeigen (sonst nur Nachname). */
   showVorname: boolean
+  /** Die Landesflagge vor dem Bundesland anzeigen (nur bei Herkunft „Bundesland“). */
+  showFlagge: boolean
   /** Feinjustage der Schriftgröße auf der Tafel (1 = Standard). */
   scale: number
 }

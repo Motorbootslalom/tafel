@@ -75,6 +75,7 @@ export function initialState(): AppState {
       showPrevious: true,
       showParcoursName: true,
       showVorname: true,
+      showFlagge: true,
       scale: 1,
     },
     devices: [],

@@ -112,6 +112,15 @@ const scaleEvents = useLiveInput((scale) => set({ scale: Number(scale) }))
         />
         Vorname anzeigen
       </label>
+
+      <label v-if="store.state.board.originMode === 'bundesland'" class="row-tight">
+        <input
+          type="checkbox"
+          :checked="store.state.board.showFlagge"
+          @change="set({ showFlagge: ($event.target as HTMLInputElement).checked })"
+        />
+        Landesflagge anzeigen
+      </label>
     </div>
 
     <label class="field">

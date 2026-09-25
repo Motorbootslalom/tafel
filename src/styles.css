@@ -527,6 +527,19 @@ th {
   color: #d6dee8;
 }
 
+/*
+ * Die Landesflagge steht vor dem Bundesland, unten auf der Grundlinie und etwa
+ * so hoch wie die Großbuchstaben. Der feine Rahmen ist nötig: Mehrere Flaggen
+ * haben oben einen schwarzen Streifen, der sonst im schwarzen Grund verschwände.
+ */
+.board-flagge {
+  height: 0.72em;
+  width: auto;
+  vertical-align: baseline;
+  margin-right: 0.3em;
+  box-shadow: 0 0 0 max(1px, 0.025em) #6b7683;
+}
+
 .board-previous {
   font-size: calc(var(--u) * 0.075 * var(--info-scale) * var(--fit-scale));
   font-weight: 700;

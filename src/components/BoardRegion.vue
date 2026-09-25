@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { BoardConfig, Parcours, ParcoursRuntime, Starter } from '../types'
 import { currentSlot, previousSlot } from '../lib/startlist'
+import { flaggeZu } from '../lib/bundesland'
 
 const props = defineProps<{
   parcours: Parcours
@@ -21,6 +22,8 @@ interface Shown {
   lauf: number
   name: string
   origin: string
+  /** Landesflagge vor der Herkunft – nur, wenn dort wirklich ein Bundesland steht. */
+  flagge: string | null
 }
 
 function describe(slotId: string | undefined): Shown | null {
@@ -37,8 +40,10 @@ function describe(slotId: string | undefined): Shown | null {
     props.board.originMode === 'bundesland'
       ? starter.bundesland || starter.verein
       : starter.verein || starter.bundesland
+  const flagge =
+    props.board.showFlagge && origin === starter.bundesland ? flaggeZu(starter.bundesland) : null
 
-  return { startNr: starter.startNr, klasse: starter.klasse, lauf: slot.lauf, name, origin }
+  return { startNr: starter.startNr, klasse: starter.klasse, lauf: slot.lauf, name, origin, flagge }
 }
 
 const current = computed(() => describe(currentSlot(props.runtime)?.id))
@@ -122,7 +127,11 @@ const swapKey = computed(() =>
             <div v-fit class="board-line board-startnr">{{ current.startNr }}</div>
             <div class="board-info">
               <div v-fit class="board-line board-name">{{ current.name }}</div>
-              <div v-fit class="board-line board-origin">{{ current.origin }}</div>
+              <div v-fit class="board-line board-origin">
+                <img v-if="current.flagge" class="board-flagge" :src="current.flagge" alt="" />{{
+                  current.origin
+                }}
+              </div>
               <!--
                 Mit Klasse: Am Steg und an der Strecke wird daran abgelesen,
                 welches Boot gerade zurückkommt – die Nummer allein sagt das
