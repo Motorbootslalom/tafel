@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import type { ClassId, Parcours, TrackItem, WechselFaktor } from '../types'
 import { useStore } from '../state/store'
+import { useLiveInput } from '../state/liveInput'
 import { classColor, CLASS_IDS } from '../lib/classes'
 import { analyzeSequence, computeVerzahnung, itemDragId, presentClasses } from '../lib/verzahnung'
 import { uid } from '../lib/ids'
@@ -25,6 +26,10 @@ import { uid } from '../lib/ids'
  */
 const props = defineProps<{ parcours: Parcours }>()
 const store = useStore()
+
+const nameEvents = useLiveInput((name) =>
+  store.dispatch({ type: 'UPDATE_PARCOURS', parcoursId: props.parcours.id, patch: { name } }),
+)
 
 const startersOfParcours = computed(() =>
   store.state.starters.filter((s) => props.parcours.classIds.includes(s.klasse)),
@@ -142,21 +147,8 @@ const previewClasses = computed(() => result.value.sequence.map((s) => s.klasse)
   <div class="stack">
     <label class="field">
       Name des Parcours
-      <!--
-        Bewusst @input statt @change: `change` feuert erst, wenn das Feld den
-        Fokus verliert. Steht die Tafel auf einem zweiten Monitor und man schaut
-        nach dem Tippen nur hinüber, käme die Änderung dort nie an.
-      -->
-      <input
-        :value="parcours.name"
-        @input="
-          store.dispatch({
-            type: 'UPDATE_PARCOURS',
-            parcoursId: parcours.id,
-            patch: { name: ($event.target as HTMLInputElement).value },
-          })
-        "
-      />
+      <!-- Am Bedienrechner zieht die Tafel beim Tippen mit, siehe useLiveInput. -->
+      <input :value="parcours.name" v-on="nameEvents" />
     </label>
 
     <div>

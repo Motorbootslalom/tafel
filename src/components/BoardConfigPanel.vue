@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useStore } from '../state/store'
+import { useLiveInput } from '../state/liveInput'
 import type { BoardConfig, OriginMode } from '../types'
 
 /**
@@ -33,6 +34,9 @@ function onLogo(event: Event): void {
 }
 
 const set = (patch: Partial<BoardConfig>) => store.dispatch({ type: 'SET_BOARD', patch })
+
+const kopfzeileEvents = useLiveInput((kopfzeile) => set({ kopfzeile }))
+const scaleEvents = useLiveInput((scale) => set({ scale: Number(scale) }))
 </script>
 
 <template>
@@ -41,11 +45,11 @@ const set = (patch: Partial<BoardConfig>) => store.dispatch({ type: 'SET_BOARD',
 
     <label class="field">
       Kopfzeile (leer = keine)
-      <!-- @input, damit die Tafel schon beim Tippen mitzieht (siehe Parcours-Name). -->
+      <!-- Am Bedienrechner zieht die Tafel beim Tippen mit, siehe useLiveInput. -->
       <input
         :value="store.state.board.kopfzeile"
         placeholder="z. B. 20. Beetzseepokal"
-        @input="set({ kopfzeile: ($event.target as HTMLInputElement).value })"
+        v-on="kopfzeileEvents"
       />
     </label>
 
@@ -118,7 +122,7 @@ const set = (patch: Partial<BoardConfig>) => store.dispatch({ type: 'SET_BOARD',
         max="1.3"
         step="0.05"
         :value="store.state.board.scale"
-        @input="set({ scale: Number(($event.target as HTMLInputElement).value) })"
+        v-on="scaleEvents"
       />
     </label>
     <p class="hint">

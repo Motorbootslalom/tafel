@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { computed } from 'vue'
 import { mount } from '@vue/test-utils'
 import VerzahnungEditor from './VerzahnungEditor.vue'
 import { storeKey, type Store } from '../state/store'
@@ -33,7 +34,13 @@ const DraggableStub = {
   </div>`,
 }
 
-function setup(options: { parcours?: Partial<Parcours>; counts?: Partial<Record<ClassId, number>> } = {}) {
+function setup(
+  options: {
+    parcours?: Partial<Parcours>
+    counts?: Partial<Record<ClassId, number>>
+    isHost?: boolean
+  } = {},
+) {
   const dispatch = vi.fn<(action: Action) => void>()
   const parcours: Parcours = {
     id: 'p1',
@@ -49,7 +56,8 @@ function setup(options: { parcours?: Partial<Parcours>; counts?: Partial<Record<
     parcoursList: [parcours],
   }
 
-  const store = { state, dispatch } as unknown as Store
+  const isHost = computed(() => options.isHost ?? true)
+  const store = { state, dispatch, isHost } as unknown as Store
 
   const wrapper = mount(VerzahnungEditor, {
     props: { parcours },
@@ -269,6 +277,24 @@ describe('VerzahnungEditor – Name des Parcours', () => {
 
     const calls = dispatch.mock.calls.map(([a]) => a as Action)
     expect(calls).toContainEqual({
+      type: 'UPDATE_PARCOURS',
+      parcoursId: 'p1',
+      patch: { name: 'Parcours 2 – See' },
+    })
+  })
+
+  it('schickt ihn auf einem verbundenen Gerät erst mit Enter oder beim Verlassen', async () => {
+    // Jeder Tastendruck ginge sonst über das Relais hin und zurück, und der
+    // zurückkehrende Zustand überschriebe, was inzwischen weitergetippt wurde.
+    const { wrapper, dispatch } = setup({ isHost: false })
+    const feld = wrapper.findAll('input').find((i) => i.element.value === 'Parcours 1')!
+
+    feld.element.value = 'Parcours 2 – See'
+    await feld.trigger('input')
+    expect(dispatch.mock.calls.map(([a]) => a.type)).not.toContain('UPDATE_PARCOURS')
+
+    await feld.trigger('change')
+    expect(dispatch.mock.calls.map(([a]) => a as Action)).toContainEqual({
       type: 'UPDATE_PARCOURS',
       parcoursId: 'p1',
       patch: { name: 'Parcours 2 – See' },
