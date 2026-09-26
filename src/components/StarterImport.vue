@@ -4,11 +4,17 @@ import { useStore } from '../state/store'
 import { FIXED_ORDER_LABEL, formatStartersTsv, parseStartersTsv, type ImportResult } from '../lib/tsv'
 import { classColor, CLASS_IDS } from '../lib/classes'
 import { duplicateStartNumbers } from '../lib/startnumbers'
+import { mergeStarters } from '../lib/starterMerge'
 
 /**
  * Starterliste aus Excel übernehmen – per Copy & Paste, damit niemand Dateien
  * konvertieren muss. Eine Kopfzeile wird erkannt, sonst gilt die feste
  * Spaltenreihenfolge.
+ *
+ * „Alle ersetzen“ lässt einen laufenden Wettkampf stehen: Wiedererkannte
+ * Starter behalten ihren Platz in den Startlisten, übernommen werden nur ihre
+ * Angaben (siehe `mergeStarters`). So lässt sich nach Lauf 2 ein geänderter
+ * Name nachtragen, ohne dass alles von vorn beginnt.
  *
  * Bewusst **ohne** Lauf-Spalte: Läufe entstehen erst beim Erzeugen der
  * Startliste. Nur so kann ein Starter seinen dritten Lauf später an einer ganz
@@ -28,6 +34,19 @@ const counts = computed(() => {
 })
 
 const duplicates = computed(() => duplicateStartNumbers(store.state.starters))
+
+/** Was „Alle ersetzen“ gegenüber der bisherigen Liste ändern würde. */
+const abgleich = computed(() =>
+  preview.value && mode.value === 'replace' && store.state.starters.length
+    ? mergeStarters(store.state.starters, preview.value.starters)
+    : null,
+)
+
+/** Läuft schon eine Startliste? Dann fehlen neue Starter dort noch. */
+const hatStartlisten = computed(() => store.state.runtimes.some((rt) => rt.slots.length > 0))
+
+const wer = (s: { startNr: string; vorname: string; nachname: string }) =>
+  `${s.startNr} ${s.vorname} ${s.nachname}`.trim()
 
 function analyse(): void {
   preview.value = text.value.trim() ? parseStartersTsv(text.value) : null
@@ -100,6 +119,26 @@ async function copyOut(): Promise<void> {
         <strong>{{ preview.imported }}</strong> Starter erkannt
         <span class="dim">({{ preview.usedHeader ? 'mit Kopfzeile' : 'feste Spaltenreihenfolge' }})</span>
       </p>
+      <template v-if="abgleich">
+        <p class="small">
+          {{ abgleich.unchanged }} unverändert · {{ abgleich.changed.length }} geändert ·
+          {{ abgleich.added.length }} neu · {{ abgleich.removed.length }} entfallen
+        </p>
+        <ul v-if="abgleich.changed.length" class="small">
+          <li v-for="s in abgleich.changed" :key="s.id">geändert: {{ wer(s) }}</li>
+        </ul>
+        <p v-if="abgleich.removed.length" class="hint warn">
+          Entfallen – verschwinden auch aus den Startlisten:
+          {{ abgleich.removed.map(wer).join(', ') }}
+        </p>
+        <p v-if="abgleich.added.length && hatStartlisten" class="hint warn">
+          Neu – stehen noch in keiner Startliste, dort unter „Startlisten“ einfügen:
+          {{ abgleich.added.map(wer).join(', ') }}
+        </p>
+        <p v-if="hatStartlisten" class="hint">
+          Startlisten, gefahrene Läufe und die Freigabe bleiben erhalten.
+        </p>
+      </template>
       <details v-if="preview.skipped.length">
         <summary class="error">{{ preview.skipped.length }} Zeile(n) übersprungen</summary>
         <ul class="small">

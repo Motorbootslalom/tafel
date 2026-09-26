@@ -46,6 +46,33 @@ describe('IMPORT_STARTERS', () => {
     expect(state.starters).toHaveLength(3)
     expect(state.starters[2].startNr).toBe('E03')
   })
+
+  it('lässt einen laufenden Wettkampf beim Ersetzen stehen', () => {
+    // Nach Lauf 2 hat sich ein Name geändert, die Liste kommt neu aus Excel –
+    // mit neuen Kennungen, denn der Import vergibt sie selbst.
+    let state = withStarters({ E: 2, '1': 2 }, 3)
+    const p = state.parcoursList[0].id
+    state = apply(
+      state,
+      { type: 'ADVANCE', parcoursId: p, now: 1 },
+      { type: 'ADVANCE', parcoursId: p, now: 2 },
+      { type: 'RELEASE_LAUF', parcoursId: p, lauf: 2 },
+    )
+    const vorher = state.runtimes[0]
+
+    const neu = starters({ E: 2, '1': 2 }).map((s) => ({
+      ...s,
+      id: `neu_${s.startNr}`,
+      nachname: s.startNr === 'E01' ? 'Umbenannt' : s.nachname,
+    }))
+    state = apply(state, { type: 'IMPORT_STARTERS', starters: neu, mode: 'replace' })
+
+    expect(state.runtimes[0]).toEqual(vorher)
+    expect(state.starters.find((s) => s.startNr === 'E01')).toMatchObject({
+      id: 's_E01',
+      nachname: 'Umbenannt',
+    })
+  })
 })
 
 describe('GENERATE_ALL_STARTLISTS', () => {

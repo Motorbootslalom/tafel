@@ -1,6 +1,7 @@
 import type { AppState, ClassId, Parcours, ParcoursRuntime, Starter } from '../types'
 import { CLASS_IDS } from '../lib/classes'
 import { fillMissingStartNumbers } from '../lib/startnumbers'
+import { mergeStarters } from '../lib/starterMerge'
 import {
   advance,
   deferSlot,
@@ -184,8 +185,12 @@ export function reduce(state: AppState, action: Action): AppState {
       }
 
     case 'IMPORT_STARTERS': {
+      // Beim Ersetzen behalten wiedererkannte Starter ihre Kennung – sonst fielen
+      // sie aus den Startlisten, und ein laufender Wettkampf finge von vorn an.
       const starters =
-        action.mode === 'replace' ? [...action.starters] : [...state.starters, ...action.starters]
+        action.mode === 'replace'
+          ? mergeStarters(state.starters, action.starters).starters
+          : [...state.starters, ...action.starters]
       fillMissingStartNumbers(starters)
       const known = new Set(starters.map((s) => s.id))
       return {
