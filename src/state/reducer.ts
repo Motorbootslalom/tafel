@@ -19,6 +19,7 @@ import {
   removeSlot,
   setClassPaused,
   showSlot,
+  startAt,
   undoLast,
   type MoveOptions,
 } from '../lib/startlist'
@@ -340,6 +341,9 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'RELEASE_LAUF':
       return mapRuntime(state, action.parcoursId, (rt) => releaseLauf(rt, action.lauf))
+
+    case 'START_AT':
+      return mapRuntime(state, action.parcoursId, (rt) => startAt(rt, action.slotId))
 
     case 'SET_MESSAGE':
       return mapRuntime(state, action.parcoursId, (rt) => ({ ...rt, message: action.message }))

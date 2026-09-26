@@ -63,6 +63,8 @@ export type Action =
    */
   | { type: 'MOVE_CLASS_BEFORE'; parcoursId: string; klasse: ClassId; before: ClassId | null }
   | { type: 'RELEASE_LAUF'; parcoursId: string; lauf: number }
+  /** Alles vor diesem Start gilt als gefahren, er steht als Nächstes an. */
+  | { type: 'START_AT'; parcoursId: string; slotId: string }
   | { type: 'SET_MESSAGE'; parcoursId: string; message: BoardMessage | null }
 
   // --- Darstellung und Stammdaten ---------------------------------------

@@ -169,6 +169,49 @@ function patchSlot(slots: StartSlot[], id: string, patch: Partial<StartSlot>): S
 }
 
 /**
+ * Mitten im Wettkampf einsteigen – etwa nach einem kompletten Neu-Import vor
+ * Lauf 3. Alles vor dem gewählten Start gilt als gefahren, sein Lauf ist
+ * freigegeben, und er steht als Nächstes an.
+ *
+ * Die übersprungenen Starts kommen nicht in die Historie: Sie standen nie auf
+ * der Tafel, und erfundene Zeiten verdürben die Wartezeit-Prognose. Genau daran
+ * lassen sie sich auch wiedererkennen – wählt man danach einen früheren Start,
+ * werden sie ab dort wieder offen. Ein Irrtum ist also mit einem zweiten Klick
+ * behoben.
+ */
+export function startAt(rt: ParcoursRuntime, slotId: string): ParcoursRuntime {
+  const index = rt.slots.findIndex((s) => s.id === slotId)
+  if (index < 0) return rt
+  const gezeigt = new Set(rt.history)
+  const slots = rt.slots.map((s, i): StartSlot => {
+    if (i < index) return s.status === 'done' ? s : { ...s, status: 'done', shownAt: undefined }
+    if (s.status === 'done' && !gezeigt.has(s.id)) return { ...s, status: 'pending' }
+    return s
+  })
+  return { ...rt, slots, releasedLauf: Math.max(1, rt.slots[index].lauf) }
+}
+
+/**
+ * Der erste Start eines Laufs – wahlweise der ersten, der eine bestimmte Klasse
+ * fährt. Grundlage für „Einsteigen bei Lauf 3“ bzw. „Lauf 2 ab Klasse 5“.
+ * Bereits auf der Tafel gezeigte Starts zählen nicht.
+ */
+export function firstSlotOf(
+  rt: ParcoursRuntime,
+  lauf: number,
+  klasse: ClassId | null,
+  klasseOf: KlasseOf,
+): StartSlot | null {
+  const gezeigt = new Set(rt.history)
+  return (
+    rt.slots.find(
+      (s) =>
+        s.lauf === lauf && !gezeigt.has(s.id) && (!klasse || klasseOf(s.starterId) === klasse),
+    ) ?? null
+  )
+}
+
+/**
  * Zeigt einen bestimmten Slot auf der Tafel. Der Slot wird als gefahren
  * markiert, ans Ende der Historie gehängt und – falls er nicht ohnehin schon
  * dort stand – direkt hinter den zuletzt gezeigten Slot einsortiert, damit die

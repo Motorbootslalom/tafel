@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
-import type { Parcours, ParcoursRuntime, StartSlot } from '../types'
+import type { ClassId, Parcours, ParcoursRuntime, StartSlot } from '../types'
 import { useStore } from '../state/store'
 import { classColor } from '../lib/classes'
-import { isClassPaused, laeufeOf, nextReleasableLauf, type LaufAnchor } from '../lib/startlist'
+import {
+  firstSlotOf,
+  isClassPaused,
+  laeufeOf,
+  nextReleasableLauf,
+  type LaufAnchor,
+} from '../lib/startlist'
 import { sortedByClassThenStartNr } from '../lib/startnumbers'
 import { uid } from '../lib/ids'
 
@@ -48,6 +54,47 @@ function releasePrevious(): void {
     parcoursId: props.parcours.id,
     lauf: props.runtime.releasedLauf - 1,
   })
+}
+
+/**
+ * Einsteigen mitten im Wettkampf – etwa nach einem kompletten Neu-Import vor
+ * Lauf 3. Lauf und Klasse sind nur der bequeme Weg, den Start zu wählen; in der
+ * Liste geht es mit „ab hier“ direkt.
+ */
+const einstiegLauf = ref(1)
+const einstiegKlasse = ref<ClassId | ''>('')
+const klasseOf = (starterId: string) => store.starterById(starterId)?.klasse ?? null
+
+/** Klassen, die im gewählten Lauf noch einen Start haben – in Startreihenfolge. */
+const einstiegKlassen = computed(() => {
+  const gezeigt = new Set(props.runtime.history)
+  const out: ClassId[] = []
+  for (const s of props.runtime.slots) {
+    if (s.lauf !== einstiegLauf.value || gezeigt.has(s.id)) continue
+    const k = klasseOf(s.starterId)
+    if (k && !out.includes(k)) out.push(k)
+  }
+  return out
+})
+
+const einstiegSlot = computed(() =>
+  firstSlotOf(props.runtime, einstiegLauf.value, einstiegKlasse.value || null, klasseOf),
+)
+
+function startAt(slot: StartSlot): void {
+  const index = props.runtime.slots.findIndex((s) => s.id === slot.id)
+  const offenDavor = props.runtime.slots.slice(0, index).filter((s) => s.status !== 'done').length
+  const starter = starterOf(slot)
+  const wer = starter ? `${starter.startNr} ${starter.vorname} ${starter.nachname}` : 'diesem Start'
+  if (
+    offenDavor &&
+    !confirm(
+      `Ab ${wer} (Lauf ${slot.lauf}) weitermachen? Die ${offenDavor} Starts davor gelten dann als gefahren. Mit einem früheren Start lässt sich das wieder zurücknehmen.`,
+    )
+  ) {
+    return
+  }
+  store.dispatch({ type: 'START_AT', parcoursId: props.parcours.id, slotId: slot.id })
 }
 
 const candidates = computed(() =>
@@ -177,6 +224,24 @@ function statusLabel(slot: StartSlot): string {
       <span class="dim small">
         Spätere Läufe stehen zwar in der Liste, werden aber erst nach Freigabe gefahren – Lauf 2 ist
         am Nachmittag, Lauf 3 meist am nächsten Tag.
+      </span>
+    </div>
+
+    <div class="row einstieg">
+      <span>Einsteigen bei</span>
+      <select v-model.number="einstiegLauf" @change="einstiegKlasse = ''">
+        <option v-for="lauf in laeufe" :key="lauf" :value="lauf">Lauf {{ lauf }}</option>
+      </select>
+      <select v-model="einstiegKlasse">
+        <option value="">ab dem ersten Start</option>
+        <option v-for="k in einstiegKlassen" :key="k" :value="k">ab Klasse {{ k }}</option>
+      </select>
+      <button :disabled="!einstiegSlot" @click="einstiegSlot && startAt(einstiegSlot)">
+        Einsteigen
+      </button>
+      <span class="dim small">
+        Alles davor gilt als gefahren, der Lauf ist freigegeben. Einzelne Starter: in der Liste
+        „ab hier“.
       </span>
     </div>
 
@@ -313,6 +378,13 @@ function statusLabel(slot: StartSlot): string {
                   @click="move(slot, 1)"
                 >
                   ▼
+                </button>
+                <button
+                  :disabled="!!runtime.history.includes(slot.id)"
+                  title="ab hier starten – alles davor gilt als gefahren"
+                  @click="startAt(slot)"
+                >
+                  ab hier
                 </button>
                 <button
                   class="danger"

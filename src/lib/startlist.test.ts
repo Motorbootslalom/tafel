@@ -27,6 +27,8 @@ import {
   setClassPaused,
   showSlot,
   startableSlots,
+  startAt,
+  firstSlotOf,
   undoLast,
 } from './startlist'
 import { klasseLookup, parcours, starters } from './testing'
@@ -81,6 +83,52 @@ describe('advance', () => {
     rt = advance(rt, 1000)
     const done = advance(rt, 2000)
     expect(done.history).toHaveLength(1)
+  })
+})
+
+describe('mitten im Wettkampf einsteigen', () => {
+  it('beginnt direkt mit Lauf 3', () => {
+    const { rt, klasseOf } = setup({ E: 2, '1': 2 }, 3)
+    const ziel = firstSlotOf(rt, 3, null, klasseOf)!
+    const after = startAt(rt, ziel.id)
+
+    expect(after.releasedLauf).toBe(3)
+    expect(nextSlot(after, klasseOf)?.id).toBe(ziel.id)
+    expect(after.slots.filter((s) => s.lauf < 3).every((s) => s.status === 'done')).toBe(true)
+    expect(after.slots.filter((s) => s.lauf === 3).every((s) => s.status === 'pending')).toBe(true)
+    // Übersprungenes stand nie auf der Tafel – keine Historie, keine Zeiten.
+    expect(after.history).toEqual([])
+    expect(after.slots.some((s) => s.shownAt !== undefined)).toBe(false)
+  })
+
+  it('steigt in einem Lauf bei einer bestimmten Klasse ein', () => {
+    const { rt, klasseOf } = setup({ E: 2, '1': 2 }, 2)
+    const ziel = firstSlotOf(rt, 2, '1', klasseOf)!
+    expect(klasseOf(ziel.starterId)).toBe('1')
+    expect(ziel.lauf).toBe(2)
+
+    const after = startAt(rt, ziel.id)
+    expect(nextSlot(after, klasseOf)?.id).toBe(ziel.id)
+    expect(after.releasedLauf).toBe(2)
+  })
+
+  it('macht einen zu späten Einstieg mit einem früheren wieder gut', () => {
+    const { rt, klasseOf } = setup({ E: 2, '1': 2 }, 3)
+    const zuWeit = startAt(rt, firstSlotOf(rt, 3, null, klasseOf)!.id)
+    const zurueck = startAt(zuWeit, firstSlotOf(zuWeit, 2, null, klasseOf)!.id)
+
+    expect(zurueck.releasedLauf).toBe(2)
+    expect(zurueck.slots.filter((s) => s.lauf >= 2).every((s) => s.status === 'pending')).toBe(true)
+    expect(zurueck.slots.filter((s) => s.lauf === 1).every((s) => s.status === 'done')).toBe(true)
+  })
+
+  it('lässt tatsächlich Gefahrenes stehen', () => {
+    const { rt, klasseOf } = setup({ E: 2, '1': 2 }, 2)
+    const gefahren = advance(rt, 1000, klasseOf)
+    const after = startAt(gefahren, gefahren.slots[0].id)
+    // Der erste Start stand auf der Tafel – er bleibt gefahren und in der Historie.
+    expect(after.slots[0]).toMatchObject({ status: 'done', shownAt: 1000 })
+    expect(after.history).toEqual(gefahren.history)
   })
 })
 
