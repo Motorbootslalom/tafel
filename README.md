@@ -58,10 +58,12 @@ Umschalten, der die alte Lösung geplagt hat, kann gar nicht mehr entstehen.
   übernehmen. Bis dahin gelten die Werte der **DM 2025** – mittlere Fahrzeit je
   Klasse aus den Ergebnislisten plus 30 s für den Bootswechsel.
 - **Mobile Bedienung** (Pro): Handys am Steg werden per QR-Code (wechselt alle
-  30 s) oder sechsstelligem Geräte-Code (5 min gültig) freigeschaltet – mit
-  genau den Rechten, die der Admin vorher festgelegt hat, etwa „nur Parcours
-  See“. Rechte lassen sich jederzeit ändern; das Gerät übernimmt sie sofort,
-  ohne sich neu anzumelden.
+  30 s) oder sechsstelligem Geräte-Code (5 min gültig, für ein Gerät)
+  freigeschaltet – mit genau den Rechten, die der Admin vorher festgelegt hat,
+  etwa „nur Parcours See“. Rechte lassen sich jederzeit ändern; das Gerät
+  übernimmt sie sofort, ohne sich neu anzumelden. Für Zuschauer und Tafeln gibt
+  es einen **Dauercode** samt festem QR-Code zum Aushängen – mehrfach nutzbar,
+  bis er beendet wird; bedienen kann damit niemand etwas.
 
 ## Loslegen
 

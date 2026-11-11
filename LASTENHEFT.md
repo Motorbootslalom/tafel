@@ -161,7 +161,7 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | P-1  | Die Bedienung lässt sich auf Handys oder Tablets auslagern.                                           |
 | P-2  | **Rechteverwaltung**: Ein Gerät darf nur bestimmte Parcours bedienen (z. B. nur See).                  |
 | P-3  | Anmeldung per **QR-Code**, der alle 30 Sekunden wechselt.                                             |
-| P-4  | Alternativ per **Geräte-Code**: 6 gut unterscheidbare alphanumerische Zeichen, 5 Minuten gültig, Groß-/Kleinschreibung egal. |
+| P-4  | Alternativ per **Geräte-Code**: 6 gut unterscheidbare alphanumerische Zeichen, 5 Minuten gültig und nur für **ein** Gerät, Groß-/Kleinschreibung egal. Ein benutzter oder abgelaufener Code bleibt durchgestrichen stehen, damit ihn niemand mehr vorliest; für das nächste Gerät gibt es einen neuen. Hört jemand am Funk mit und ist schneller, scheitert das richtige Handy sofort, und das fremde steht in der Geräteliste. |
 | P-5  | Rechte prüft immer der Host – nie das Gerät, nie das Relais.                                          |
 | P-6  | Rechte lassen sich jederzeit ändern oder entziehen. Die Änderung wirkt **sofort** auf dem Gerät – ohne erneute Anmeldung. Beim **Entzug** wird zusätzlich die Verbindung getrennt – über ntfy, wo es keine Verbindung zu trennen gibt, wechselt stattdessen der Raumschlüssel – und die gespeicherte Anmeldung verworfen: Das Gerät kommt nur mit einem neuen Code zurück. |
 | P-7  | Nach einem Verbindungsabbruch meldet sich ein bekanntes Gerät **von selbst** wieder an, ohne neuen Code. |
@@ -174,6 +174,7 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | P-14 | Läuft die Verbindung über einen fremden Dienst ohne eigenes Relais (ntfy), ist sie **Ende-zu-Ende verschlüsselt** und vom Host **signiert**: Der Dienst sieht weder Namen noch Geburtsdaten, nur Zeitpunkt, Größe und IP; niemand außer dem Host kann den Handys eine andere Tafel unterschieben, und mitgeschnittene Nachrichten lassen sich nicht erneut einspielen. |
 | P-15 | Über ntfy gilt ein Gerät nur mit **seinem eigenen Schlüssel** als bekannt – die Geräte-ID allein reicht nicht, denn sie steht im verteilten Zustand. Was nach einem Entzug verteilt wird, kann das entzogene Gerät nicht mehr entschlüsseln, auch wenn es mitliest. |
 | P-16 | Die öffentlichen Server haben ein Kontingent je IP. Kurze Spitzen (etwa beim Umsortieren) fasst der Host zusammen, und verteilt wird nur, was sich geändert hat – ein Weiterschalten sind ein paar hundert Byte statt des ganzen Zustands. |
+| P-17 | Für reine Anzeigen (**Zuschauer**, **Tafel**) lässt sich per Häkchen ein **Dauercode** ausgeben: mehrfach nutzbar, ohne Ablauf, bis er beendet wird. Dazu gibt es einen festen QR-Code und einen Link mit Raum und Code – zum Aushängen oder Verschicken, angemeldet wird ohne Tippen. Er läuft neben den Einmal-Codes her und übersteht ein Neuladen des Bedienrechners. Beenden lässt angemeldete Geräte stehen. Für Rollen, die etwas bedienen, gibt es keinen Dauercode – er wäre eine dauerhaft offene Tür, sobald ihn jemand mithört. |
 
 ## 10. Abgrenzung
 

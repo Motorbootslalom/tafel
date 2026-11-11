@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from '../state/store'
-import { formatCode, remainingSeconds, QR_TOKEN_TTL_MS } from '../lib/pairing'
+import {
+  formatCode,
+  permanentCodeAllowed,
+  remainingSeconds,
+  QR_TOKEN_TTL_MS,
+} from '../lib/pairing'
 import { qrSvg } from '../lib/qr'
 import { shareableViewUrl, viewUrl } from '../lib/router'
 import { ASSIGNABLE_ROLES, ROLE_HINT, ROLE_LABEL } from '../state/permissions'
@@ -14,13 +19,20 @@ import type { Role } from '../types'
  * nur Parcours See". Das Gerät kann daran nichts ändern; es kennt nur den Code.
  *
  * Der QR-Code wechselt alle 30 Sekunden, damit ein abfotografierter Bildschirm
- * niemandem dauerhaft Zugang verschafft. Der Geräte-Code gilt 5 Minuten und ist
- * zum Vorlesen übers Funkgerät gedacht.
+ * niemandem dauerhaft Zugang verschafft. Der Geräte-Code gilt 5 Minuten und für
+ * ein Gerät; er ist zum Vorlesen übers Funkgerät gedacht.
+ *
+ * Für reine Anzeigen (Zuschauer, Tafel) gibt es per Häkchen einen **Dauercode**:
+ * mehrfach nutzbar, ohne Ablauf, mit festem QR-Code zum Aushängen. Er läuft
+ * neben den Einmal-Codes her und endet erst mit „Dauercode beenden“.
  */
 const store = useStore()
 
 const role = ref<Role>('steg')
 const parcoursIds = ref<string[]>([])
+/** Häkchen „Dauercode“ – zählt nur bei Rollen, die nichts bedienen. */
+const permanentWanted = ref(false)
+const permanent = computed(() => permanentWanted.value && permanentCodeAllowed(role.value))
 const now = ref(Date.now())
 let ticker: ReturnType<typeof setInterval> | null = null
 
@@ -28,6 +40,9 @@ const open = computed(() => !!store.pairing.deviceCode || !!store.pairing.qrToke
 const remoteReady = computed(() => store.transportConfig.kind !== 'local')
 
 const codeSeconds = computed(() => remainingSeconds(store.pairing.deviceCode, now.value))
+const codeUsed = computed(() => !!store.pairing.deviceCode?.usedAt)
+/** Ein verbrauchter oder abgelaufener Code bleibt sichtbar, aber durchgestrichen – damit ihn niemand mehr vorliest. */
+const codeDead = computed(() => codeUsed.value || !codeSeconds.value)
 const qrSeconds = computed(() => remainingSeconds(store.pairing.qrToken, now.value))
 
 /**
@@ -65,13 +80,24 @@ const qrTarget = computed(() => {
 const roomLink = computed(() =>
   store.transportConfig.kind === 'ntfy' && store.transportConfig.hostPublic ? linkFor(roomParams.value) : '',
 )
-const copied = ref(false)
 
-async function copyRoomLink(): Promise<void> {
+/**
+ * Der Dauercode als Link: Raum und Code in einem. Wer ihn öffnet oder den festen
+ * QR-Code scannt, ist ohne Tippen angemeldet.
+ */
+const permanentCode = computed(() => store.pairing.permanentCode)
+const permanentLink = computed(() =>
+  permanentCode.value ? linkFor({ t: permanentCode.value.value, ...roomParams.value }) : '',
+)
+const permanentQr = computed(() => (permanentLink.value ? qrSvg(permanentLink.value) : ''))
+
+const copied = ref<'room' | 'permanent' | null>(null)
+
+async function copy(text: string, which: 'room' | 'permanent'): Promise<void> {
   try {
-    await navigator.clipboard.writeText(roomLink.value)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 2000)
+    await navigator.clipboard.writeText(text)
+    copied.value = which
+    setTimeout(() => (copied.value = null), 2000)
   } catch {
     // Ohne Zwischenablage (etwa unter file:// in manchen Browsern) bleibt das
     // Feld zum Markieren.
@@ -80,8 +106,21 @@ async function copyRoomLink(): Promise<void> {
 
 const qrMarkup = computed(() => (qrTarget.value ? qrSvg(qrTarget.value) : ''))
 
+const startLabel = computed(() => {
+  if (permanent.value) return permanentCode.value ? 'Neuen Dauercode ausgeben' : 'Dauercode ausgeben'
+  return open.value ? 'Neuen Code ausgeben' : 'Code ausgeben'
+})
+
 function start(): void {
-  store.openPairing({ role: role.value, parcoursIds: [...parcoursIds.value] })
+  // Parcours zählen nur am Steg – sonst nähme ein Zuschauer die zuletzt
+  // angehakte Auswahl mit.
+  const intent = { role: role.value, parcoursIds: role.value === 'steg' ? [...parcoursIds.value] : [] }
+  if (permanent.value) store.issuePermanentCode(intent)
+  else store.openPairing(intent)
+}
+
+function endPermanent(): void {
+  store.endPermanentCode()
 }
 
 function stop(): void {
@@ -131,6 +170,12 @@ function toggleParcours(id: string): void {
         <span class="dim small">{{ ROLE_HINT[role] }}</span>
       </div>
 
+      <label v-if="permanentCodeAllowed(role)" class="row-tight">
+        <input v-model="permanentWanted" type="checkbox" />
+        Dauercode – mehrfach nutzbar, läuft nicht ab
+        <span class="dim small">(etwa für Zuschauer)</span>
+      </label>
+
       <div v-if="role === 'steg'">
         <span class="small dim">Darf diese Parcours bedienen</span>
         <div class="row">
@@ -153,9 +198,7 @@ function toggleParcours(id: string): void {
       </div>
 
       <div class="row">
-        <button class="primary" @click="start">
-          {{ open ? 'Neuen Code ausgeben' : 'Code ausgeben' }}
-        </button>
+        <button class="primary" @click="start">{{ startLabel }}</button>
         <button v-if="open" @click="stop">Anmeldung schließen</button>
       </div>
 
@@ -170,14 +213,15 @@ function toggleParcours(id: string): void {
 
         <div>
           <span class="small dim">Geräte-Code zum Vorlesen</span>
-          <div class="code-display">
+          <div class="code-display" :class="{ dead: codeDead }">
             {{ store.pairing.deviceCode ? formatCode(store.pairing.deviceCode.value) : '–' }}
           </div>
-          <p class="hint" :class="{ warn: codeSeconds < 60 }">
-            <template v-if="codeSeconds">noch {{ Math.floor(codeSeconds / 60) }}:{{
+          <p class="hint" :class="{ warn: codeDead || codeSeconds < 60 }">
+            <template v-if="codeUsed">schon benutzt – für das nächste Gerät „Neuen Code ausgeben“</template>
+            <template v-else-if="codeSeconds">noch {{ Math.floor(codeSeconds / 60) }}:{{
               String(codeSeconds % 60).padStart(2, '0')
-            }} gültig</template>
-            <template v-else>abgelaufen – neuen Code ausgeben</template>
+            }} gültig · für ein Gerät</template>
+            <template v-else>abgelaufen – „Neuen Code ausgeben“</template>
           </p>
           <div v-if="roomLink" class="stack">
             <p class="hint">
@@ -193,7 +237,7 @@ function toggleParcours(id: string): void {
                 readonly
                 @focus="($event.target as HTMLInputElement).select()"
               />
-              <button @click="copyRoomLink">{{ copied ? 'Kopiert' : 'Kopieren' }}</button>
+              <button @click="copy(roomLink, 'room')">{{ copied === 'room' ? 'Kopiert' : 'Kopieren' }}</button>
             </div>
           </div>
           <p class="hint">
@@ -203,6 +247,41 @@ function toggleParcours(id: string): void {
             <span class="mono">5</span> statt S, <span class="mono">8</span> statt B. Wer sich beim
             Ablesen vertut und den Buchstaben tippt, kommt trotzdem durch – er wird als die
             zugehörige Ziffer gelesen.
+          </p>
+        </div>
+      </div>
+
+      <div v-if="permanentCode" class="pairing-view permanent">
+        <div>
+          <div class="qr-box" v-html="permanentQr"></div>
+          <p class="hint">Fester QR-Code – darf ausgedruckt und ausgehängt werden.</p>
+        </div>
+
+        <div class="stack">
+          <span class="small dim">Dauercode · {{ ROLE_LABEL[permanentCode.intent.role] }}</span>
+          <div class="code-display">{{ formatCode(permanentCode.value) }}</div>
+          <p class="hint">
+            Mehrfach nutzbar und ohne Ablauf, bis er beendet wird. {{ ROLE_HINT[permanentCode.intent.role] }}
+            Bedienen kann damit niemand etwas.
+          </p>
+          <div class="row-tight">
+            <input
+              class="mono small"
+              style="flex: 1; min-width: 0"
+              :value="permanentLink"
+              readonly
+              @focus="($event.target as HTMLInputElement).select()"
+            />
+            <button @click="copy(permanentLink, 'permanent')">
+              {{ copied === 'permanent' ? 'Kopiert' : 'Kopieren' }}
+            </button>
+          </div>
+          <p class="hint">Der Link enthält Raum und Code – wer ihn öffnet, ist ohne Tippen angemeldet.</p>
+          <div class="row">
+            <button @click="endPermanent">Dauercode beenden</button>
+          </div>
+          <p class="hint dim">
+            Beenden lässt angemeldete Geräte stehen; einzeln entziehen unter „Verbundene Geräte“.
           </p>
         </div>
       </div>
@@ -217,6 +296,16 @@ function toggleParcours(id: string): void {
   flex-wrap: wrap;
   align-items: flex-start;
   padding-top: 0.5rem;
+}
+
+.permanent {
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+}
+
+.code-display.dead {
+  text-decoration: line-through;
+  opacity: 0.4;
 }
 
 .toggle {

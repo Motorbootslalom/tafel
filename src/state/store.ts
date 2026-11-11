@@ -17,9 +17,15 @@ import { loadState, saveState } from '../lib/storage'
 import { classStats } from '../lib/timing'
 import {
   emptyPairing,
+  endPermanentCode as withoutPermanentCode,
   issueDeviceCode,
+  issuePermanentCode as withPermanentCode,
+  loadPermanentCode,
+  markDeviceCodeUsed,
+  mergePairing,
   revokeDeviceCode,
   rotateQrToken,
+  savePermanentCode,
   type PairIntent,
   type PairingState,
 } from '../lib/pairing'
@@ -92,6 +98,10 @@ export interface Store {
   openPairing(intent: PairIntent): void
   rotatePairingToken(): void
   closePairing(): void
+  /** Dauercode für reine Anzeigen ausgeben – ein bisheriger verfällt. */
+  issuePermanentCode(intent: PairIntent): void
+  /** Dauercode beenden; schon angemeldete Geräte bleiben. */
+  endPermanentCode(): void
   requestAccess(token: string, name: string): void
   answerPending(approve: boolean): void
   /** Alle anderen Fenster und verbundenen Geräte neu laden – nach einem Update. */
@@ -124,7 +134,8 @@ export function createStore(): Store {
   if (!loaded) saveState(state as AppState)
 
   const transportConfig = reactive<TransportConfig>(loadTransportConfig())
-  const pairing = reactive<PairingState>(emptyPairing())
+  // Der Dauercode überlebt ein Neuladen – er hängt womöglich ausgedruckt am Steg.
+  const pairing = reactive<PairingState>({ ...emptyPairing(), permanentCode: loadPermanentCode() })
   const pendingRequest = ref<{ deviceId: string; name: string } | null>(null)
 
   const grant = ref<DeviceGrant | null>(OWN_ADMIN_GRANT(me))
@@ -262,7 +273,7 @@ export function createStore(): Store {
       saveState(state as AppState)
     } else if (msg.kind === 'pairing') {
       // Ein anderes Fenster hat einen Anmelde-Code ausgegeben oder zurückgezogen.
-      Object.assign(pairing, msg.pairing)
+      Object.assign(pairing, mergePairing(pairing, msg.pairing))
     } else if (msg.kind === 'reload') {
       // Hält dieses Fenster die Verbindung, gibt es den Befehl an die Geräte
       // weiter, bevor es sich selbst neu lädt.
@@ -313,6 +324,7 @@ export function createStore(): Store {
       case 'hello': {
         if (!isHost.value) return
 
+        const now = Date.now()
         const entscheidung = decideHello({
           pairing,
           // Über ntfy beweist nur der Schlüssel, wer sich meldet. Ist er nicht
@@ -322,12 +334,19 @@ export function createStore(): Store {
           deviceId: env.from,
           name: msg.name,
           token: msg.token,
-          now: Date.now(),
+          now,
         })
 
         if (entscheidung.kind === 'denied') {
           relay.value?.send({ kind: 'denied', reason: entscheidung.reason }, env.from)
           return
+        }
+
+        // Ein Geräte-Code meldet genau ein Gerät an. Die anderen Fenster sollen
+        // das sehen – dort steht womöglich die Anzeige mit dem Code.
+        if (entscheidung.via === 'code') {
+          Object.assign(pairing, markDeviceCodeUsed(pairing, now))
+          sharePairing()
         }
 
         applyLocally({ type: 'UPSERT_DEVICE', grant: entscheidung.grant })
@@ -342,6 +361,11 @@ export function createStore(): Store {
       case 'welcome':
         grant.value = msg.grant
         pendingRequest.value = null
+        // Ab jetzt erkennt der Host das Gerät wieder; den Code beim nächsten
+        // Verbinden mitzuschicken, brächte nichts Gutes: Ein Dauercode würde
+        // dabei geänderte Rechte zurücksetzen und ein entzogenes Gerät, das den
+        // Entzug verpasst hat, still wieder anmelden.
+        dropIdentityToken()
         return
 
       case 'denied':
@@ -537,9 +561,22 @@ export function createStore(): Store {
     sharePairing()
   }
 
+  /** Schließt QR-Code und Geräte-Code. Ein Dauercode läuft weiter. */
   function closePairing(): void {
     currentIntent = null
     Object.assign(pairing, revokeDeviceCode({ ...pairing, qrToken: null, previousQrToken: null }))
+    sharePairing()
+  }
+
+  function issuePermanentCode(intent: PairIntent): void {
+    Object.assign(pairing, withPermanentCode(pairing, intent, Date.now()))
+    savePermanentCode(pairing.permanentCode)
+    sharePairing()
+  }
+
+  function endPermanentCode(): void {
+    Object.assign(pairing, withoutPermanentCode(pairing))
+    savePermanentCode(null)
     sharePairing()
   }
 
@@ -555,6 +592,17 @@ export function createStore(): Store {
       return raw ? (JSON.parse(raw) as { name: string; token: string }) : null
     } catch {
       return null
+    }
+  }
+
+  /** Nach der Freigabe zählt nur noch die Geräte-ID: den Code vergessen. */
+  function dropIdentityToken(): void {
+    const identity = loadIdentity()
+    if (!identity?.token) return
+    try {
+      localStorage.setItem(IDENTITY_KEY, JSON.stringify({ ...identity, token: '' }))
+    } catch {
+      // Dann schickt das Gerät den verbrauchten Code eben noch einmal mit.
     }
   }
 
@@ -628,6 +676,8 @@ export function createStore(): Store {
     openPairing,
     rotatePairingToken,
     closePairing,
+    issuePermanentCode,
+    endPermanentCode,
     requestAccess,
     answerPending,
     reloadAll,

@@ -9,8 +9,14 @@ import type { Role } from '../types'
  *   einem abfotografierten Code nichts mehr anfangen. Beim Wechsel bleibt der
  *   vorherige Token kurz gültig, damit ein Scan im Moment der Rotation nicht ins
  *   Leere läuft.
- * - **Geräte-Code**: 6 Zeichen, 5 Minuten gültig – zum Vorlesen übers Funkgerät,
- *   wenn niemand am Tafelrechner steht.
+ * - **Geräte-Code**: 6 Zeichen, 5 Minuten gültig und nur für **ein** Gerät – zum
+ *   Vorlesen übers Funkgerät, wenn niemand am Tafelrechner steht. Hört jemand
+ *   mit und ist schneller, scheitert das richtige Handy sofort, und das fremde
+ *   steht in der Geräteliste – statt dass beide unbemerkt hineinkommen.
+ * - **Dauercode**: für reine Anzeigen (Zuschauer, Tafel), mehrfach nutzbar und
+ *   ohne Ablauf, bis er beendet wird – zum Aushängen oder Verschicken. Für
+ *   Rollen, die etwas bedienen, gibt es ihn bewusst nicht: Er wäre eine
+ *   dauerhaft offene Tür, sobald ihn jemand mithört.
  */
 
 /**
@@ -103,19 +109,30 @@ export interface Ticket {
   value: string
   expiresAt: number
   intent: PairIntent
+  /** Nur Geräte-Code: Zeitpunkt, zu dem ein Gerät ihn benutzt hat. */
+  usedAt?: number
+}
+
+/** Ein Dauercode: mehrfach nutzbar, ohne Ablauf – nur für reine Anzeigen. */
+export interface PermanentCode {
+  value: string
+  intent: PairIntent
+  issuedAt: number
 }
 
 export interface PairingState {
-  /** Aktueller Geräte-Code (5 min) – `null`, solange keiner ausgegeben wurde. */
+  /** Aktueller Geräte-Code (5 min, ein Gerät) – `null`, solange keiner ausgegeben wurde. */
   deviceCode: Ticket | null
   /** Aktueller QR-Token (30 s). */
   qrToken: Ticket | null
   /** Zuletzt abgelöster QR-Token, noch im Kulanzfenster. */
   previousQrToken: Ticket | null
+  /** Dauercode – unabhängig von den Einmal-Codes, bis er beendet wird. */
+  permanentCode: PermanentCode | null
 }
 
 export function emptyPairing(): PairingState {
-  return { deviceCode: null, qrToken: null, previousQrToken: null }
+  return { deviceCode: null, qrToken: null, previousQrToken: null, permanentCode: null }
 }
 
 /** Gibt einen frischen Geräte-Code aus (der alte verfällt sofort). */
@@ -132,6 +149,53 @@ export function issueDeviceCode(
 
 export function revokeDeviceCode(state: PairingState): PairingState {
   return { ...state, deviceCode: null }
+}
+
+/** Der Geräte-Code hat ein Gerät angemeldet – für ein weiteres gilt er nicht. */
+export function markDeviceCodeUsed(state: PairingState, now: number): PairingState {
+  if (!state.deviceCode || state.deviceCode.usedAt) return state
+  return { ...state, deviceCode: { ...state.deviceCode, usedAt: now } }
+}
+
+/**
+ * Übernimmt den Stand eines anderen Fensters. Ein hier schon verbrauchter
+ * Geräte-Code bleibt verbraucht, auch wenn das andere Fenster ihn noch als frisch
+ * kennt – etwa weil es gerade den QR-Code weitergedreht hat, bevor die Nachricht
+ * vom Verbrauch ankam.
+ */
+export function mergePairing(local: PairingState, incoming: PairingState): PairingState {
+  const used = local.deviceCode?.usedAt
+  const code = incoming.deviceCode
+  if (used && code && !code.usedAt && code.value === local.deviceCode!.value) {
+    return { ...incoming, deviceCode: { ...code, usedAt: used } }
+  }
+  return incoming
+}
+
+/** Rollen, für die es einen Dauercode gibt: solche, die nichts bedienen. */
+export const PERMANENT_CODE_ROLES: readonly Role[] = ['viewer', 'board']
+
+export function permanentCodeAllowed(role: Role): boolean {
+  return PERMANENT_CODE_ROLES.includes(role)
+}
+
+/** Gibt einen Dauercode aus; ein bisheriger verfällt damit. */
+export function issuePermanentCode(
+  state: PairingState,
+  intent: PairIntent,
+  now: number,
+): PairingState {
+  if (!permanentCodeAllowed(intent.role)) {
+    throw new Error(`Kein Dauercode für die Rolle „${intent.role}“`)
+  }
+  let value = generateDeviceCode()
+  // Nicht mit dem laufenden Einmal-Code verwechselbar machen.
+  while (value === state.deviceCode?.value) value = generateDeviceCode()
+  return { ...state, permanentCode: { value, intent, issuedAt: now } }
+}
+
+export function endPermanentCode(state: PairingState): PairingState {
+  return { ...state, permanentCode: null }
 }
 
 /**
@@ -154,27 +218,91 @@ export function closePairing(): PairingState {
   return emptyPairing()
 }
 
-const alive = (t: Ticket | null, now: number): boolean => !!t && t.expiresAt > now
+const alive = (t: Ticket | null, now: number): boolean => !!t && !t.usedAt && t.expiresAt > now
+
+/** Womit sich ein Gerät angemeldet hat. */
+export type PairingVia = 'qr' | 'code' | 'permanent'
+
+export interface PairingMatch {
+  intent: PairIntent
+  via: PairingVia
+}
 
 /**
- * Prüft eine Anmeldung und liefert die damit verbundenen Rechte. Akzeptiert den
+ * Prüft eine Anmeldung und sagt, welcher Weg gegriffen hat. Akzeptiert den
  * getippten Geräte-Code ebenso wie einen gescannten QR-Token (auch den gerade
- * abgelösten, solange die Kulanz läuft). `null` heißt: abgelehnt.
+ * abgelösten, solange die Kulanz läuft) und den Dauercode. `null` heißt:
+ * abgelehnt.
  */
-export function verifyPairing(state: PairingState, raw: string, now: number): PairIntent | null {
+export function matchPairing(state: PairingState, raw: string, now: number): PairingMatch | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
 
-  if (alive(state.qrToken, now) && trimmed === state.qrToken!.value) return state.qrToken!.intent
+  if (alive(state.qrToken, now) && trimmed === state.qrToken!.value) {
+    return { intent: state.qrToken!.intent, via: 'qr' }
+  }
   if (alive(state.previousQrToken, now) && trimmed === state.previousQrToken!.value) {
-    return state.previousQrToken!.intent
+    return { intent: state.previousQrToken!.intent, via: 'qr' }
   }
 
   const code = normalizeCode(trimmed)
-  if (code && alive(state.deviceCode, now) && code === state.deviceCode!.value) {
-    return state.deviceCode!.intent
+  if (!code) return null
+  if (alive(state.deviceCode, now) && code === state.deviceCode!.value) {
+    return { intent: state.deviceCode!.intent, via: 'code' }
+  }
+  const permanent = state.permanentCode
+  // Die Rolle noch einmal prüfen: Ein Dauercode mit Bedienrechten darf auch
+  // dann nichts freischalten, wenn er irgendwie in den Zustand gelangt ist.
+  if (permanent && code === permanent.value && permanentCodeAllowed(permanent.intent.role)) {
+    return { intent: permanent.intent, via: 'permanent' }
   }
   return null
+}
+
+/** Wie {@link matchPairing}, nur die Rechte. */
+export function verifyPairing(state: PairingState, raw: string, now: number): PairIntent | null {
+  return matchPairing(state, raw, now)?.intent ?? null
+}
+
+const PERMANENT_CODE_KEY = 'tafel:dauercode'
+
+/**
+ * Den Dauercode beim Host aufheben: Er hängt womöglich ausgedruckt am Steg und
+ * muss ein Neuladen des Bedienrechners überstehen.
+ */
+export function loadPermanentCode(): PermanentCode | null {
+  try {
+    const raw = localStorage.getItem(PERMANENT_CODE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PermanentCode> | null
+    const value = typeof parsed?.value === 'string' ? normalizeCode(parsed.value) : null
+    const intent = parsed?.intent
+    if (
+      !value ||
+      !intent ||
+      typeof intent.role !== 'string' ||
+      !permanentCodeAllowed(intent.role) ||
+      !Array.isArray(intent.parcoursIds)
+    ) {
+      return null
+    }
+    return {
+      value,
+      intent: { role: intent.role, parcoursIds: intent.parcoursIds.filter((p) => typeof p === 'string') },
+      issuedAt: typeof parsed?.issuedAt === 'number' ? parsed.issuedAt : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function savePermanentCode(code: PermanentCode | null): void {
+  try {
+    if (code) localStorage.setItem(PERMANENT_CODE_KEY, JSON.stringify(code))
+    else localStorage.removeItem(PERMANENT_CODE_KEY)
+  } catch {
+    // Ohne Speicher gilt der Dauercode bis zum nächsten Neuladen.
+  }
 }
 
 /** Verbleibende Sekunden eines Tickets (0, wenn abgelaufen). */

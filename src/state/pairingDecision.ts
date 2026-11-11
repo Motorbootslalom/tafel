@@ -1,5 +1,5 @@
 import type { DeviceGrant } from '../types'
-import { verifyPairing, type PairingState } from '../lib/pairing'
+import { matchPairing, type PairingState, type PairingVia } from '../lib/pairing'
 import { uniqueDeviceName } from '../lib/deviceName'
 
 /**
@@ -9,7 +9,16 @@ import { uniqueDeviceName } from '../lib/deviceName'
  * aus dem Store, weil hier entschieden wird, wer die Tafel bedienen darf.
  */
 export type HelloDecision =
-  | { kind: 'welcome'; grant: DeviceGrant }
+  | {
+      kind: 'welcome'
+      grant: DeviceGrant
+      /**
+       * Womit sich das Gerät angemeldet hat – fehlt bei einem bekannten Gerät,
+       * das ohne gültigen Code zurückkommt. Bei `code` ist der Geräte-Code
+       * damit verbraucht.
+       */
+      via?: PairingVia
+    }
   | { kind: 'denied'; reason: string }
 
 export interface HelloRequest {
@@ -40,11 +49,11 @@ export interface HelloRequest {
 export function decideHello(request: HelloRequest): HelloDecision {
   const { pairing, devices, deviceId, name, token, now } = request
 
-  const intent = verifyPairing(pairing, token, now)
+  const match = matchPairing(pairing, token, now)
   const known = devices.find((d) => d.deviceId === deviceId) ?? null
 
-  if (!intent) {
-    if (!known) return { kind: 'denied', reason: 'Code ungültig oder abgelaufen' }
+  if (!match) {
+    if (!known) return { kind: 'denied', reason: 'Code ungültig, abgelaufen oder schon benutzt' }
     // Bekanntes Gerät kommt zurück: Rechte bleiben, Name bleibt.
     return { kind: 'welcome', grant: { ...known, lastSeen: now } }
   }
@@ -54,11 +63,12 @@ export function decideHello(request: HelloRequest): HelloDecision {
 
   return {
     kind: 'welcome',
+    via: match.via,
     grant: {
       deviceId,
       name: uniqueDeviceName(name || known?.name || 'Gerät', vergeben),
-      role: intent.role,
-      parcoursIds: intent.parcoursIds,
+      role: match.intent.role,
+      parcoursIds: match.intent.parcoursIds,
       lastSeen: now,
     },
   }

@@ -133,7 +133,8 @@ onMounted(() => {
     <div v-else class="card stack">
       <p class="dim">
         Die Verwaltung zeigt einen QR-Code und einen sechsstelligen Geräte-Code an. Der QR-Code
-        wechselt alle 30 Sekunden, der Geräte-Code gilt 5 Minuten.
+        wechselt alle 30 Sekunden, der Geräte-Code gilt 5 Minuten und für ein Gerät. Ein
+        Dauercode für Zuschauer gilt, bis die Verwaltung ihn beendet.
       </p>
 
       <label class="field">
