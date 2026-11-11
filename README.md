@@ -347,6 +347,14 @@ Die Schlüssel des Hosts liegen nur im Browser des Bedienrechners. Geht dessen
 Speicher verloren, braucht es einen neuen Raum. Mehrere Fenster dort teilen sich
 den Raum – wie beim Relais hält nur eines die Verbindung.
 
+**Nachsehen beim ntfy-Server.** Die Raum-ID, die die Verwaltung anzeigt, ist
+nicht selbst das Thema: Der Host schreibt nach `<Raum-ID>-h`, die Geräte nach
+`<Raum-ID>-g`; unter der bloßen Raum-ID kommt nie etwas an. Wer eines der beiden
+Themen in der Weboberfläche des Servers abonniert, sieht die Nachrichten – als
+verschlüsselte Umschläge (`{"v":1,"e":…,"s":…,"n":…,"c":…}`), größere als
+Anhang. Lesen lässt sich darin nichts, und das ist Absicht. ntfy.adminforge.de
+hält sie 12 Stunden vor.
+
 Packen können Browser seit 2023 (Safari 16.4, Chrome 80, Firefox 113); ältere
 melden das beim Verbinden, statt still nichts zu empfangen.
 

@@ -163,14 +163,17 @@ aufeinanderfolgende Starter möglichst aus verschiedenen Klassen kommen.
 | P-3  | Anmeldung per **QR-Code**, der alle 30 Sekunden wechselt.                                             |
 | P-4  | Alternativ per **Geräte-Code**: 6 gut unterscheidbare alphanumerische Zeichen, 5 Minuten gültig, Groß-/Kleinschreibung egal. |
 | P-5  | Rechte prüft immer der Host – nie das Gerät, nie das Relais.                                          |
-| P-6  | Rechte lassen sich jederzeit ändern oder entziehen. Die Änderung wirkt **sofort** auf dem Gerät – ohne erneute Anmeldung. Beim **Entzug** wird zusätzlich die Verbindung getrennt und die gespeicherte Anmeldung verworfen: Das Gerät kommt nur mit einem neuen Code zurück. |
+| P-6  | Rechte lassen sich jederzeit ändern oder entziehen. Die Änderung wirkt **sofort** auf dem Gerät – ohne erneute Anmeldung. Beim **Entzug** wird zusätzlich die Verbindung getrennt – über ntfy, wo es keine Verbindung zu trennen gibt, wechselt stattdessen der Raumschlüssel – und die gespeicherte Anmeldung verworfen: Das Gerät kommt nur mit einem neuen Code zurück. |
 | P-7  | Nach einem Verbindungsabbruch meldet sich ein bekanntes Gerät **von selbst** wieder an, ohne neuen Code. |
 | P-8  | Der Betrieb läuft ohne Internet: ein Mini-Programm auf dem Bedienrechner im WLAN oder Hotspot.        |
-| P-9  | Alternativ über AWS, solange verlässliches Internet vorhanden ist.                                    |
+| P-9  | Alternativ übers Internet, solange verlässliches Internet vorhanden ist: über einen öffentlichen **ntfy**-Server ganz ohne eigenen Betrieb (Vorgabe ntfy.adminforge.de, einstellbar), oder über ein eigenes Relais bei Cloudflare oder AWS. Die Seite kann dabei weiter von GitHub Pages oder aus der heruntergeladenen Datei kommen. |
 | P-10 | Mehrere Fenster auf dem Bedienrechner (Tafel, Verwaltung, Steg) sehen einander in **jeder** Betriebsart. Zum Relais verbindet nur eines von ihnen – ein zweites würde das erste verdrängen. |
-| P-11 | Eine Sicherung lässt sich wieder einspielen. Das ist der Weg von der Basis- in die Pro-Version: Beide laufen unter verschiedenen Herkünften (`file://` bzw. `http://…`) und haben getrennte Browser-Speicher. |
+| P-11 | Eine Sicherung lässt sich wieder einspielen. Das ist der Weg von der Basis- in die Pro-Version: Beide laufen unter verschiedenen Herkünften (`file://` bzw. `http://…`) und haben getrennte Browser-Speicher. Über ntfy entfällt der Schritt: Auch die heruntergeladene Datei kann Host sein; QR-Code und Raum-Link zeigen dann auf GitHub Pages. |
 | P-12 | Die Rechte sind Teil des Zustands: Sie überleben einen Neustart und stecken in jeder Sicherung.       |
 | P-13 | Ein Gerät kann **Poweruser** werden: Es pflegt Starterliste, Startlisten, Tafel-Darstellung und Zeiten und bedient alle Parcours. Geräte freischalten, Rechte vergeben, Sicherungen einspielen und Zurücksetzen bleiben dem Bedienrechner vorbehalten – sonst könnte sich ein Handy selbst alle Rechte geben oder den Bedienrechner aussperren. Die Daten bleiben beim Host; der Poweruser schickt nur Änderungen. |
+| P-14 | Läuft die Verbindung über einen fremden Dienst ohne eigenes Relais (ntfy), ist sie **Ende-zu-Ende verschlüsselt** und vom Host **signiert**: Der Dienst sieht weder Namen noch Geburtsdaten, nur Zeitpunkt, Größe und IP; niemand außer dem Host kann den Handys eine andere Tafel unterschieben, und mitgeschnittene Nachrichten lassen sich nicht erneut einspielen. |
+| P-15 | Über ntfy gilt ein Gerät nur mit **seinem eigenen Schlüssel** als bekannt – die Geräte-ID allein reicht nicht, denn sie steht im verteilten Zustand. Was nach einem Entzug verteilt wird, kann das entzogene Gerät nicht mehr entschlüsseln, auch wenn es mitliest. |
+| P-16 | Die öffentlichen Server haben ein Kontingent je IP. Kurze Spitzen (etwa beim Umsortieren) fasst der Host zusammen, und verteilt wird nur, was sich geändert hat – ein Weiterschalten sind ein paar hundert Byte statt des ganzen Zustands. |
 
 ## 10. Abgrenzung
 
@@ -191,8 +194,18 @@ Pausen als Mittel, eine Spur nach hinten zu verschieben.
   bediente Parcours geraten sich damit nicht ins Gehege. Ob das im Betrieb
   reicht oder es doch einen ausgewiesenen Host braucht, muss der erste
   Wettkampf zeigen.
-- **AWS-Kosten:** API Gateway für WebSocket ist nur im ersten Jahr eines neuen
-  Kontos kostenlos (siehe [cloud/README.md](cloud/README.md)). Dauerhaft
-  kostenfrei bleibt nur der lokale Weg.
+- **Kosten übers Internet:** API Gateway für WebSocket ist nur im ersten Jahr
+  eines neuen Kontos kostenlos (siehe [cloud/README.md](cloud/README.md)).
+  Dauerhaft kostenfrei sind neben dem lokalen Weg der Cloudflare Worker (im
+  kostenlosen Tarif) und ntfy.
+- **ntfy im Echtbetrieb:** Geprüft ist es bisher mit zwei Browsern gegen
+  ntfy.adminforge.de, noch nicht mit echten Handys am Steg, auch nicht mit einem iPhone.
+  Der Server wird ehrenamtlich betrieben und sagt nichts zu; fällt er aus, lässt
+  sich in der Verwaltung ein anderer eintragen (ntfy.sh ist mit 250 Nachrichten
+  je Tag zu knapp).
+- **Verschlüsselung im lokalen Netz:** Im WLAN laufen Host-Schlüssel, Geräte-IDs
+  und Starterdaten heute im Klartext. Der einfachste Weg wäre die Verschlüsselung
+  aus dem ntfy-Weg auch übers lokale Relais; https über einen DNS-Namen ist
+  verworfen (siehe README).
 - **Mehrere Läufe gleichzeitig:** Aktuell wird je Lauf ein kompletter Durchgang
   erzeugt. Ob Läufe auch verschränkt geplant werden sollen, ist offen.
