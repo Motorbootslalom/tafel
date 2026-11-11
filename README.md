@@ -384,6 +384,53 @@ eine Abhängigkeit eingehandelt, die das Relais heute nicht hat. Der andere Weg
 sind Signaturen in der Anwendung selbst; dann genügt ein beliebiger Kanal, siehe
 [ntfy](#ntfy-ohne-eigenen-server).
 
+### Verworfen: https im WLAN über DNS-Namen und Let's Encrypt
+
+Die Idee: Ein öffentlicher DNS-Name zeigt auf die Adresse des Bedienrechners im
+WLAN, dazu kommt ein Zertifikat von Let's Encrypt. Dann wäre auch der Verkehr im
+WLAN verschlüsselt – heute laufen dort Host-Schlüssel, Geräte-IDs und
+Starterdaten im Klartext. Die Seite könnte von GitHub Pages kommen, und Internet
+bräuchte es nur kurz, um das Zertifikat zu holen.
+
+Durchdacht und verworfen (November 2026), aus diesen Gründen:
+
+- **Geteilte Zertifikate taugen nicht.** Dienste wie traefik.me oder local-ip.co
+  verteilten ein Zertifikat samt privatem Schlüssel an alle – mitlesen kann damit
+  jeder, der es ebenfalls heruntergeladen hat. Let's Encrypt widerruft solche
+  Zertifikate; traefik.me hat es deshalb mehrfach getroffen. sslip.io und nip.io
+  liefern nur den Namen. Es bräuchte also ein **eigenes** Zertifikat je Verein,
+  per DNS-01-Prüfung bei einem DNS-Anbieter mit Schnittstelle (eigene Domain,
+  DuckDNS, deSEC …).
+- **DNS-Rebind-Schutz.** Die Fritzbox verwirft ab Werk DNS-Antworten, die auf
+  eine Adresse im eigenen Netz zeigen; OpenWrt und Pi-hole tun das oft ebenso.
+  Ohne Ausnahme im Router lädt die Seite am Handy schlicht nicht – ein
+  Fehlerbild, das sich am Steg kaum erklären lässt.
+- **Internet nicht nur kurz.** Das Zertifikat hält Wochen, aber jedes Handy fragt
+  den Namen beim Verbinden neu nach. Fällt das Netz am See aus, kommt kein Handy
+  mehr neu dazu. Ein lokaler DNS-Eintrag im Router würde helfen, lässt sich aber
+  längst nicht bei jedem Router einstellen.
+- **Wechselnde Adresse.** An jedem Wettkampfort bekommt der Rechner eine andere
+  Adresse im WLAN. Der DNS-Eintrag müsste beim Start nachgezogen werden – dafür
+  läge ein Zugangsschlüssel zum DNS-Anbieter auf dem Laptop.
+- **Chrome fragt nach.** Lädt die Seite von GitHub Pages und verbindet sich ins
+  WLAN, verlangt Chrome inzwischen eine Erlaubnis für das lokale Netz, auch für
+  WebSockets. Wer „Blockieren“ tippt, muss das in den Website-Einstellungen von
+  Hand wieder freigeben.
+- **Ein Dienst fürs ganze Projekt** – wie bei Plex, das jedem Gerät einen eigenen
+  Namen samt Zertifikat gibt – nähme den Vereinen die Einrichtung ab. Das wäre
+  aber wieder ein Server, den jemand betreiben muss; genau das erspart ntfy.
+
+Unterm Strich viel Einrichtung und neue, schwer erklärbare Fehlerbilder – für
+ein lokales Netz, das heute ohne all das funktioniert.
+
+**Noch nicht umgesetzt, aber der einfachere Weg zum selben Ziel:** Die
+Verschlüsselung aus dem ntfy-Weg hängt nicht an ntfy, und tweetnacl braucht kein
+https. Dieselben versiegelten Nachrichten könnten über das lokale Relais laufen –
+verschlüsselt im WLAN, ohne Zertifikat, DNS oder Internet. Das Relais reicht sie
+dann nur noch blind weiter; seine Prüfungen übernimmt wie bei ntfy der Host.
+Nicht abgedeckt wäre, dass jemand im WLAN die per `http://` ausgelieferte Seite
+selbst verändert; davor schützt allein ein Zertifikat.
+
 ## Wie es aufgebaut ist
 
 ```
