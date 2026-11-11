@@ -161,6 +161,7 @@ Zertifikat. Das ist der eigentliche Aufwand, nicht der Server.
 | `cloud/` (AWS) | nein | fertig | Centbeträge je Veranstaltung |
 | [Cloudflare Worker + Durable Object](cloudflare/) | nein | Worker um `relay.mjs` herum | im kostenlosen Tarif |
 | Tailscale / ZeroTier statt Relais | teilweise | VPN auf jedem Gerät | für kleine Netze kostenlos |
+| [ntfy](#ntfy-ohne-eigenen-server) (z. B. ntfy.adminforge.de) | nein | Transport + Verschlüsselung in der Anwendung, **kein Server** | kostenlos, Kontingent je IP |
 | Ably / Pusher / Supabase Realtime | nein | Adapter + Rechte-Token | Freikontingente – siehe Warnung |
 
 **Den lokalen Server durchreichen** ist der unterschätzte Weg: Ein Cloudflare
@@ -203,6 +204,123 @@ aus. Das Lebenszeichen ist deshalb jetzt eine feste Zeichenkette – an den
 bestehenden Relais war dafür nichts zu ändern, was als Test festgehalten ist.
 **Umsetzung und Einrichtung: [`cloudflare/`](cloudflare/).**
 
+### ntfy: ohne eigenen Server
+
+> **Stand:** Entwurf, die Umsetzung folgt.
+
+[ntfy](https://ntfy.sh) ist ein offener Benachrichtigungsdienst: Was an
+`https://<server>/<thema>` geschickt wird, erreicht alle, die dieses Thema
+abonniert haben – per WebSocket direkt aus dem Browser. Öffentliche Server wie
+`ntfy.adminforge.de` nehmen das ohne Konto an und antworten mit
+`Access-Control-Allow-Origin: *`. Damit fällt das Relais ganz weg: nichts zu
+bauen, nichts zu betreiben, und die Seite kommt weiter von GitHub Pages oder
+aus der heruntergeladenen Datei.
+
+Was gegen fertige Pub/Sub-Dienste spricht ([siehe unten](#vorsicht-bei-fertigen-pubsub-diensten)),
+löst hier die Kryptografie: Die Handys glauben nur, was der Host signiert hat.
+Wer sonst noch in das Thema schreibt, wird verworfen.
+
+| Aufgabe des Relais | mit ntfy |
+| --- | --- |
+| Host an alle oder an ein Gerät, Geräte nur an den Host | zwei Themen: `<thema>-h` beschreibt nur der Host, `<thema>-g` nur die Geräte; gezielte Nachrichten kann nur das Zielgerät entschlüsseln |
+| nur der Host darf verteilen (Host-Schlüssel) | Signatur des Hosts |
+| nicht Freigegebene schicken nur `hello` | der Host verwirft alles andere von Geräten, deren Schlüssel er nicht freigegeben hat |
+| letzten Zustand vorhalten | entfällt – jedes Gerät fragt nach dem Verbinden nach (`request-state`), wie heute schon |
+
+Die Weiterleitungsregeln wandern damit in die Anwendung. Es entsteht keine
+dritte Umsetzung neben `server/hub.go` und `cloud/src/relay.mjs`.
+
+#### Schlüssel
+
+Verschlüsselt wird mit [tweetnacl](https://github.com/dchest/tweetnacl-js)
+(geprüft, ohne Abhängigkeiten, wenige Kilobyte). Bewusst nicht mit WebCrypto:
+X25519 und Ed25519 gibt es dort erst seit 2024/25 in allen großen Browsern, und
+am Steg sind auch ältere Handys im Einsatz.
+
+- Der Host erzeugt einmal je Raum ein Schlüsselpaar zum Signieren (Ed25519),
+  eines zum Verschlüsseln (X25519), einen Raumschlüssel und ein zufälliges Thema
+  (128 Bit).
+- Der **QR-Code** trägt Server, Thema und die beiden öffentlichen Schlüssel des
+  Hosts. Er ist der Vertrauensanker: Der Schlüssel kommt über den Bildschirm,
+  nicht über ntfy – niemand kann sich dazwischenschalten.
+- `hello`: Das Handy erzeugt ein eigenes Schlüsselpaar und schickt die Anmeldung
+  mit `box` (X25519 + XSalsa20-Poly1305) an den Host. Der Code ist unterwegs
+  nicht lesbar, und der Host weiß, mit welchem Schlüssel das Gerät spricht.
+- `welcome`: an das Handy verschlüsselt, mit den Rechten und dem Raumschlüssel.
+- **Verteilung an alle**: mit dem Raumschlüssel verschlüsselt (`secretbox`) und
+  vom Host signiert. Den Raumschlüssel kennen alle Geräte, auch die Zuschauer –
+  ohne Signatur könnte jedes freigegebene Handy den anderen eine Tafel
+  unterschieben.
+- **Gerät an Host**: mit `box`, der Host weiß also, welches Gerät es war.
+
+Nebenbei schließt das eine Lücke, die das Relais hat: Geräte-IDs stehen im
+Zustand, den alle Geräte bekommen. Wer eine kennt und den Raum erreicht, kann
+sich damit melden, und der Host erkennt „ein bekanntes Gerät“ wieder. Bei ntfy
+hängt die Freigabe am Schlüssel des Geräts, nicht an seiner ID.
+
+#### Was man leicht übersieht
+
+- **Wiedereinspielen.** Wer das Thema kennt, kann eine alte, gültig signierte
+  Nachricht erneut schicken. Jede Nachricht trägt deshalb im verschlüsselten Teil
+  einen streng steigenden Zeitstempel ihres Absenders; was nicht neuer ist, wird
+  verworfen. Sonst zeigte die Tafel einen alten Stand, oder ein mitgeschnittenes
+  „nächster Starter“ liefe zweimal.
+- **Entzug.** Das Relais trennt ein entzogenes Gerät einfach ab. Bei ntfy kennt es
+  Thema und Raumschlüssel weiterhin. Der Host wechselt deshalb beim Entzug den
+  Raumschlüssel und schickt ihn einzeln an die übrigen Geräte. Schreiben kann das
+  entzogene Gerät ohnehin nicht mehr – der Host nimmt von ihm nichts an.
+- **Geräte-Code übers Funkgerät.** Sechs Zeichen tragen keinen Schlüssel. Das
+  Handy braucht dafür vorher den **Raum-Link** (Server, Thema, öffentliche
+  Schlüssel – nichts Geheimes, er darf per Messenger verschickt werden); der Code
+  schaltet dann frei.
+- **QR-Code unter `file://`.** Läuft der Bedienrechner mit der heruntergeladenen
+  Datei, zeigt der QR-Code auf die Fassung bei GitHub Pages. Mit einer
+  `file://`-Adresse kann kein Handy etwas anfangen.
+
+#### Grenzen der öffentlichen Server
+
+Abgefragt über `/v1/account` (November 2026), jeweils je IP:
+
+| | ntfy.sh | ntfy.adminforge.de |
+| --- | --- | --- |
+| Nachrichten je Tag | **250** | 17 280 |
+| Anhang je Datei | 2 MB | 15 MB |
+| Anhänge gesamt (3 h vorgehalten) | 20 MB | 100 MB |
+
+ntfy.sh scheidet damit aus: Ein Wettkampftag hat allein beim Host einige hundert
+Verteilungen. Vorgabe ist deshalb ntfy.adminforge.de; der Server ist einstellbar,
+ein eigener ntfy geht genauso. Die echten Zahlen der DM 2026 ließen sich nicht
+mehr nachmessen – Cloudflare hält die Metriken nicht so lange vor.
+
+Aus „je IP“ folgt zweierlei. Hängen Tafelrechner und Handys am selben Hotspot,
+teilen sie sich ein Kontingent. Und kurze Spitzen – beim Umsortieren der
+Startliste ist jedes Ziehen eine Änderung – fasst der Host zusammen, statt jede
+einzeln zu schicken. Meldet der Server „zu viele Anfragen“ (429), wartet er und
+schickt dann nur den neuesten Stand.
+
+#### Änderungen statt Gesamtzustand
+
+ntfy nimmt bis 4096 Byte als Nachricht; was größer ist, legt es als Anhang ab
+(nachgemessen: 4097 Byte werden zur `attachment.txt`). Ein Anhang kostet jedes
+Gerät eine zweite Anfrage und zählt aufs Anhang-Kontingent. Der Gesamtzustand
+passt nie hinein: 150 Starter, drei Läufe und zwei Parcours ergeben 60–66 kB
+JSON, gepackt etwa 8 kB – dazu käme ein Logo mit bis zu 530 kB.
+
+Verteilt wird deshalb nur, was sich gegenüber dem zuletzt verteilten Stand
+geändert hat, gepackt und mit fortlaufender Nummer. Ein Weiterschalten sind ein
+paar hundert Byte. Fehlt einem Gerät eine Nummer, fordert es den vollen Stand an
+und bekommt ihn einzeln, notfalls als Anhang. Das Logo reist nur mit, wenn es
+sich ändert.
+
+Bewusst eine Differenz der **Daten** und nicht die Actions, obwohl der Reducer
+deterministisch ist: Ein Handy kann eine ältere Fassung der Anwendung im
+Zwischenspeicher haben und rechnete dann anders als der Host. Und nicht jede
+Änderung beim Host geht als Action an alle – die Freigabe eines Geräts etwa
+nicht.
+
+**Kein Offline-Betrieb.** ntfy ersetzt `cloud/` und `cloudflare/`, nicht
+`server/` am See.
+
 ### Vorsicht bei fertigen Pub/Sub-Diensten
 
 Ably, Pusher, Supabase Realtime oder ein MQTT-Broker sehen verlockend aus, weil
@@ -213,9 +331,11 @@ ersatzlos weg. Wer den Kanalnamen kennt, könnte dann gefälschte
 unterschieben. Der Host prüft zwar weiterhin jede Änderung – die **Anzeige**
 ließe sich trotzdem manipulieren.
 
-Wiederherstellen lässt sich das nur über kanalgenaue Rechte-Token (Ably kann
-das). Damit ist man beim Aufwand aber schon nahe an einem eigenen Worker – und
-hat sich eine Abhängigkeit eingehandelt, die das Relais heute nicht hat.
+Wiederherstellen lässt sich das über kanalgenaue Rechte-Token (Ably kann das).
+Damit ist man beim Aufwand aber schon nahe an einem eigenen Worker – und hat sich
+eine Abhängigkeit eingehandelt, die das Relais heute nicht hat. Der andere Weg
+sind Signaturen in der Anwendung selbst; dann genügt ein beliebiger Kanal, siehe
+[ntfy](#ntfy-ohne-eigenen-server).
 
 ## Wie es aufgebaut ist
 
