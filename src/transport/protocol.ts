@@ -91,6 +91,14 @@ export interface Envelope {
   to?: string
   ts: number
   msg: Message
+  /**
+   * Nur beim Empfang über ntfy, gesetzt vom Transport des Hosts – nie von der
+   * Leitung übernommen: Das Gerät meldet sich mit einem Schlüssel, mit dem es
+   * nicht freigeschaltet wurde. Eine Anmeldung zählt dann nur mit gültigem
+   * Code, auch wenn die Geräte-ID bekannt ist. Geräte-IDs stehen im Zustand,
+   * den alle Geräte bekommen – sie allein beweisen nichts.
+   */
+  keyUnknown?: true
 }
 
 export function envelope(from: string, msg: Message, to?: string): Envelope {

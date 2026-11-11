@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { KEEPALIVE, envelope, isEnvelope, type Envelope, type Message } from './protocol'
-import type { ConnectionStatus, Transport, TransportKind } from './types'
+import type { ConnectionStatus, Transport } from './types'
 
 /** Abstände der Wiederverbindungsversuche (ms) – erst schnell, dann geduldig. */
 const BACKOFF_MS = [500, 1000, 2000, 5000, 10000, 15000]
@@ -40,7 +40,7 @@ export class SocketTransport implements Transport {
   private stopped = false
 
   constructor(
-    readonly kind: Exclude<TransportKind, 'local'>,
+    readonly kind: 'lan' | 'cloud',
     private readonly deviceId: string,
     private readonly options: SocketOptions,
   ) {}

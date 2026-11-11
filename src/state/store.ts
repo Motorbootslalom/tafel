@@ -315,7 +315,10 @@ export function createStore(): Store {
 
         const entscheidung = decideHello({
           pairing,
-          devices: state.devices,
+          // Über ntfy beweist nur der Schlüssel, wer sich meldet. Ist er nicht
+          // der freigeschaltete, gilt das Gerät als unbekannt und braucht einen
+          // gültigen Code – die ID allein steht in jedem verteilten Zustand.
+          devices: env.keyUnknown ? state.devices.filter((d) => d.deviceId !== env.from) : state.devices,
           deviceId: env.from,
           name: msg.name,
           token: msg.token,

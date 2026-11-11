@@ -5,6 +5,7 @@ import { navigate } from '../lib/router'
 import { formatCode, normalizeCode } from '../lib/pairing'
 import { suggestDeviceName } from '../lib/deviceName'
 import { ROLE_LABEL, mayManage } from '../state/permissions'
+import { isTopic, normalizeServer, parseHostPublic } from '../transport/ntfy/room'
 
 /**
  * Anmeldung eines mobilen Bediengeräts.
@@ -14,7 +15,9 @@ import { ROLE_LABEL, mayManage } from '../state/permissions'
  * - **QR-Code scannen** – dann stehen Relais-Adresse, Raum und der 30 s gültige
  *   Token schon in der URL, und die Anmeldung läuft ohne weitere Eingabe.
  * - **Geräte-Code eintippen** – für den Fall, dass der Bildschirm nicht in
- *   Reichweite ist. Dazu müssen Adresse und Raum einmalig eingetragen werden.
+ *   Reichweite ist. Dazu müssen Adresse und Raum einmalig eingetragen werden –
+ *   bei ntfy kommt beides mit dem Raum-Link, denn dort gehören die öffentlichen
+ *   Schlüssel des Hosts dazu, und die tippt niemand ab.
  */
 const props = defineProps<{ params: URLSearchParams }>()
 const store = useStore()
@@ -22,9 +25,23 @@ const store = useStore()
 const token = ref(props.params.get('t') ?? '')
 const relayUrl = ref(props.params.get('u') ?? store.transportConfig.url ?? '')
 const room = ref(props.params.get('r') ?? store.transportConfig.room ?? 'default')
-const kind = ref<'lan' | 'cloud'>(
-  (props.params.get('k') as 'lan' | 'cloud') ??
-    (store.transportConfig.kind === 'cloud' ? 'cloud' : 'lan'),
+type RemoteKind = 'lan' | 'cloud' | 'ntfy'
+const isRemoteKind = (value: unknown): value is RemoteKind =>
+  value === 'lan' || value === 'cloud' || value === 'ntfy'
+const kind = ref<RemoteKind>(
+  isRemoteKind(props.params.get('k'))
+    ? (props.params.get('k') as RemoteKind)
+    : isRemoteKind(store.transportConfig.kind)
+      ? store.transportConfig.kind
+      : 'lan',
+)
+/** Nur ntfy: öffentliche Schlüssel des Hosts aus QR-Code oder Raum-Link. */
+const hostPublic = ref(props.params.get('h') ?? store.transportConfig.hostPublic ?? '')
+const ntfyReady = computed(
+  () =>
+    !!parseHostPublic(hostPublic.value) &&
+    !!normalizeServer(relayUrl.value) &&
+    isTopic(room.value.trim()),
 )
 /**
  * Vorbelegt mit dem, was das Gerät über sich verrät – am Steg soll niemand
@@ -37,7 +54,12 @@ const busy = ref(false)
 const scanned = computed(() => !!props.params.get('t'))
 const codeValid = computed(() => scanned.value || !!normalizeCode(token.value))
 const canSubmit = computed(
-  () => !busy.value && codeValid.value && !!relayUrl.value.trim() && !!name.value.trim(),
+  () =>
+    !busy.value &&
+    codeValid.value &&
+    !!relayUrl.value.trim() &&
+    !!name.value.trim() &&
+    (kind.value !== 'ntfy' || ntfyReady.value),
 )
 
 const errorText = computed(() => store.transport.value?.error.value ?? null)
@@ -49,8 +71,9 @@ async function connect(): Promise<void> {
 
   await store.setTransport({
     kind: kind.value,
-    url: relayUrl.value.trim(),
+    url: kind.value === 'ntfy' ? (normalizeServer(relayUrl.value) ?? '') : relayUrl.value.trim(),
     room: room.value.trim() || 'default',
+    ...(kind.value === 'ntfy' ? { hostPublic: hostPublic.value } : {}),
     isHost: false,
   })
 
@@ -130,6 +153,10 @@ onMounted(() => {
           spellcheck="false"
         />
       </label>
+      <p v-if="kind === 'ntfy' && !ntfyReady" class="hint warn">
+        Über ntfy braucht dieses Gerät den <strong>Raum-Link</strong> oder den QR-Code aus der
+        Verwaltung – darin stecken die Schlüssel, an denen es die echte Tafel erkennt.
+      </p>
       <p v-if="!scanned && token && !codeValid" class="hint error">
         Der Code besteht aus sechs Zeichen – Groß- und Kleinschreibung ist egal.
       </p>
@@ -141,8 +168,12 @@ onMounted(() => {
         <summary class="small dim">Verbindungsdaten</summary>
         <div class="stack" style="margin-top: 0.5rem">
           <label class="field">
-            Adresse des Relais
-            <input v-model="relayUrl" placeholder="ws://192.168.1.20:8080/ws" autocomplete="off" />
+            {{ kind === 'ntfy' ? 'ntfy-Server' : 'Adresse des Relais' }}
+            <input
+              v-model="relayUrl"
+              :placeholder="kind === 'ntfy' ? 'https://ntfy.adminforge.de' : 'ws://192.168.1.20:8080/ws'"
+              autocomplete="off"
+            />
           </label>
           <label class="field">
             Raum
@@ -152,7 +183,8 @@ onMounted(() => {
             Art
             <select v-model="kind">
               <option value="lan">Lokales Netz</option>
-              <option value="cloud">Internet (Cloud)</option>
+              <option value="ntfy">Internet (ntfy)</option>
+              <option value="cloud">Internet (eigenes Relais)</option>
             </select>
           </label>
         </div>

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { currentRoute, viewUrl } from './router'
+import { describe, expect, it, vi } from 'vitest'
+import { PUBLIC_APP_URL, currentRoute, shareableViewUrl, viewUrl } from './router'
 
 describe('currentRoute', () => {
   it('liest Ansicht und Parameter aus dem Hash', () => {
@@ -34,5 +34,21 @@ describe('viewUrl', () => {
     // Unter file:// ist location.origin der Wert "null" – daraus darf keine
     // Adresse gebaut werden, sonst zeigt der QR-Code ins Leere.
     expect(viewUrl('tafel').startsWith('null')).toBe(false)
+  })
+})
+
+describe('shareableViewUrl', () => {
+  it('nimmt die eigene Adresse, wenn die Seite von einem Server kommt', () => {
+    location.hash = '#/admin'
+    expect(shareableViewUrl('pair', { t: 'ABC' })).toBe(viewUrl('pair', { t: 'ABC' }))
+  })
+
+  it('zeigt bei einer geöffneten Datei auf die öffentliche Fassung', () => {
+    vi.stubGlobal('location', { protocol: 'file:', href: 'file:///C:/Users/tafel.html#/admin' })
+    try {
+      expect(shareableViewUrl('pair', { k: 'ntfy' })).toBe(`${PUBLIC_APP_URL}#/pair?k=ntfy`)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

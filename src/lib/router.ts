@@ -43,6 +43,21 @@ export function viewUrl(view: ViewName, params?: Record<string, string>): string
   return `${base}#/${view}${query}`
 }
 
+/** Wo die Anwendung öffentlich liegt (GitHub Pages). */
+export const PUBLIC_APP_URL = 'https://motorbootslalom.github.io/tafel/'
+
+/**
+ * Wie {@link viewUrl}, aber für ein **anderes** Gerät, das übers Internet
+ * verbindet. Läuft dieser Rechner mit der heruntergeladenen Datei, wäre das eine
+ * `file://`-Adresse, mit der kein Handy etwas anfangen kann – dann zeigt der
+ * Link auf die öffentliche Fassung.
+ */
+export function shareableViewUrl(view: ViewName, params?: Record<string, string>): string {
+  if (location.protocol !== 'file:') return viewUrl(view, params)
+  const query = params ? `?${new URLSearchParams(params).toString()}` : ''
+  return `${PUBLIC_APP_URL}#/${view}${query}`
+}
+
 export function useRoute(): Ref<Route> {
   const route = ref<Route>(currentRoute())
   const onChange = () => {

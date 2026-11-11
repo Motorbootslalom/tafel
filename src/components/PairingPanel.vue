@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from '../state/store'
 import { formatCode, remainingSeconds, QR_TOKEN_TTL_MS } from '../lib/pairing'
 import { qrSvg } from '../lib/qr'
-import { viewUrl } from '../lib/router'
+import { shareableViewUrl, viewUrl } from '../lib/router'
 import { ASSIGNABLE_ROLES, ROLE_HINT, ROLE_LABEL } from '../state/permissions'
 import type { Role } from '../types'
 
@@ -30,17 +30,53 @@ const remoteReady = computed(() => store.transportConfig.kind !== 'local')
 const codeSeconds = computed(() => remainingSeconds(store.pairing.deviceCode, now.value))
 const qrSeconds = computed(() => remainingSeconds(store.pairing.qrToken, now.value))
 
+/**
+ * Wie ein Handy den Raum findet. Bei ntfy gehören die öffentlichen Schlüssel des
+ * Hosts dazu – sie sind der Grund, warum ein Handy einer signierten Tafel
+ * glauben kann. Übers Internet zeigt der Link auf die öffentliche Fassung, falls
+ * dieser Rechner mit der heruntergeladenen Datei läuft.
+ */
+const roomParams = computed<Record<string, string>>(() => {
+  const config = store.transportConfig
+  const params: Record<string, string> = {
+    u: config.url ?? '',
+    r: config.room ?? 'default',
+    k: config.kind,
+  }
+  if (config.kind === 'ntfy' && config.hostPublic) params.h = config.hostPublic
+  return params
+})
+
+const linkFor = (params: Record<string, string>) =>
+  store.transportConfig.kind === 'lan' ? viewUrl('pair', params) : shareableViewUrl('pair', params)
+
 /** Der QR-Code enthält alles, was das Handy zum Verbinden braucht. */
 const qrTarget = computed(() => {
   const token = store.pairing.qrToken?.value
   if (!token) return ''
-  return viewUrl('pair', {
-    t: token,
-    u: store.transportConfig.url ?? '',
-    r: store.transportConfig.room ?? 'default',
-    k: store.transportConfig.kind,
-  })
+  return linkFor({ t: token, ...roomParams.value })
 })
+
+/**
+ * Raum-Link für den Geräte-Code: Sechs Zeichen tragen keinen Schlüssel. Nichts
+ * daran ist geheim – er darf per Messenger verschickt werden; freigeschaltet
+ * wird erst mit dem Code.
+ */
+const roomLink = computed(() =>
+  store.transportConfig.kind === 'ntfy' && store.transportConfig.hostPublic ? linkFor(roomParams.value) : '',
+)
+const copied = ref(false)
+
+async function copyRoomLink(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(roomLink.value)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    // Ohne Zwischenablage (etwa unter file:// in manchen Browsern) bleibt das
+    // Feld zum Markieren.
+  }
+}
 
 const qrMarkup = computed(() => (qrTarget.value ? qrSvg(qrTarget.value) : ''))
 
@@ -143,6 +179,23 @@ function toggleParcours(id: string): void {
             }} gültig</template>
             <template v-else>abgelaufen – neuen Code ausgeben</template>
           </p>
+          <div v-if="roomLink" class="stack">
+            <p class="hint">
+              Für den Geräte-Code braucht das Handy über ntfy einmal den
+              <strong>Raum-Link</strong> – sechs Zeichen tragen keinen Schlüssel. Er ist nicht
+              geheim und darf per Messenger verschickt werden.
+            </p>
+            <div class="row-tight">
+              <input
+                class="mono small"
+                style="flex: 1; min-width: 0"
+                :value="roomLink"
+                readonly
+                @focus="($event.target as HTMLInputElement).select()"
+              />
+              <button @click="copyRoomLink">{{ copied ? 'Kopiert' : 'Kopieren' }}</button>
+            </div>
+          </div>
           <p class="hint">
             Groß- und Kleinschreibung ist egal. Aus jedem verwechselbaren Paar kommt nur die
             <strong>Ziffer</strong> vor: <span class="mono">0</span> statt O,

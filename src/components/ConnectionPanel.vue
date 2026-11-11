@@ -4,6 +4,14 @@ import { useStore } from '../state/store'
 import { KIND_LABEL, type TransportKind } from '../transport'
 import { fetchRelayAddresses, guessRelayUrl, preferredRelay } from '../lib/relay'
 import { buildLabel } from '../lib/build'
+import {
+  DEFAULT_NTFY_SERVER,
+  createHostRoom,
+  hostPublicOf,
+  loadHostRoom,
+  normalizeServer,
+  saveHostRoom,
+} from '../transport/ntfy/room'
 
 /**
  * Betriebsart wählen.
@@ -13,8 +21,10 @@ import { buildLabel } from '../lib/build'
  * - **Lokales Netz** – das Mini-Programm aus `server/` läuft auf dem
  *   Bedienrechner und öffnet einen WebSocket im WLAN oder Handy-Hotspot. Der
  *   Weg für den Wettkampfort ohne Internet.
- * - **Internet (Cloud)** – dasselbe Protokoll über ein Relais im Netz; nur sinnvoll, wenn
- *   vor Ort verlässlich Netz da ist.
+ * - **Internet (ntfy)** – über einen öffentlichen ntfy-Server, ohne eigenes Relais.
+ *   Die Seite kann dabei weiter von GitHub Pages kommen.
+ * - **Internet (eigenes Relais)** – dasselbe Protokoll über ein Relais im Netz
+ *   (AWS, Cloudflare); nur sinnvoll, wenn vor Ort verlässlich Netz da ist.
  *
  * Liefert das Mini-Programm die Seite selbst aus, muss die Adresse nicht
  * abgetippt werden: Es nennt auf Anfrage alle Adressen, unter denen es im Netz
@@ -24,7 +34,12 @@ import { buildLabel } from '../lib/build'
 const store = useStore()
 
 const kind = ref<TransportKind>(store.transportConfig.kind)
-const url = ref(store.transportConfig.url ?? '')
+const wasNtfy = store.transportConfig.kind === 'ntfy'
+const url = ref(wasNtfy ? '' : (store.transportConfig.url ?? ''))
+/** Eigenes Feld: Die Relais-Adresse der anderen Betriebsarten passt hier nicht. */
+const ntfyServer = ref(wasNtfy ? (store.transportConfig.url ?? DEFAULT_NTFY_SERVER) : DEFAULT_NTFY_SERVER)
+/** Erst nach Rückfrage – ein neuer Raum heißt: alle Geräte neu anmelden. */
+const confirmNewRoom = ref(false)
 const room = ref(store.transportConfig.room ?? 'default')
 const hostKey = ref(store.transportConfig.hostKey ?? '')
 const busy = ref(false)
@@ -56,11 +71,23 @@ onMounted(async () => {
   if (kind.value === 'local') kind.value = 'lan'
 })
 
-const needsUrl = computed(() => kind.value !== 'local')
+const needsUrl = computed(() => kind.value === 'lan' || kind.value === 'cloud')
+const ntfyServerValid = computed(() => normalizeServer(ntfyServer.value) !== null)
+/** ntfy.sh erlaubt ohne Konto nur 250 Nachrichten je Tag und IP. */
+const ntfyShWarning = computed(() => /(^|\/\/)ntfy\.sh(\/|$)/.test(ntfyServer.value.trim()))
+/** Der Raum, den dieser Rechner gerade nutzt – nur, wenn seine Schlüssel hier liegen. */
+const currentNtfyRoom = computed(() => {
+  const topic = store.transportConfig.kind === 'ntfy' ? store.transportConfig.room : undefined
+  return topic && loadHostRoom(topic) ? topic : null
+})
 const zeigeAuswahl = computed(
   () => kind.value === 'lan' && bekannteAdressen.value.length > 0 && !freieEingabe.value,
 )
-const canApply = computed(() => !busy.value && (!needsUrl.value || !!url.value.trim()))
+const canApply = computed(() => {
+  if (busy.value) return false
+  if (kind.value === 'ntfy') return ntfyServerValid.value
+  return !needsUrl.value || !!url.value.trim()
+})
 
 const status = computed(() => store.connectionStatus.value)
 const errorText = computed(() => store.transport.value?.error.value)
@@ -74,7 +101,36 @@ function kurz(adresse: string): string {
   }
 }
 
+/**
+ * Über ntfy: den bestehenden Raum weiterverwenden, sonst einen anlegen. Die
+ * Schlüssel bleiben im Browser; nach außen gehen nur die öffentlichen.
+ */
+async function applyNtfy(fresh: boolean): Promise<void> {
+  const server = normalizeServer(ntfyServer.value)
+  if (!server) return
+  busy.value = true
+  confirmNewRoom.value = false
+  let room = !fresh && currentNtfyRoom.value ? loadHostRoom(currentNtfyRoom.value) : null
+  if (!room) {
+    room = createHostRoom()
+    saveHostRoom(room)
+  }
+  ntfyServer.value = server
+  await store.setTransport({
+    kind: 'ntfy',
+    url: server,
+    room: room.topic,
+    hostPublic: hostPublicOf(room),
+    isHost: true,
+  })
+  busy.value = false
+}
+
 async function apply(): Promise<void> {
+  if (kind.value === 'ntfy') {
+    await applyNtfy(false)
+    return
+  }
   busy.value = true
   await store.setTransport({
     kind: kind.value,
@@ -125,7 +181,7 @@ const placeholder = computed(() =>
 
     <div class="row">
       <label
-        v-for="option in (['local', 'lan', 'cloud'] as TransportKind[])"
+        v-for="option in (['local', 'lan', 'ntfy', 'cloud'] as TransportKind[])"
         :key="option"
         class="row-tight option"
       >
@@ -149,12 +205,47 @@ const placeholder = computed(() =>
           einzutragen ist.
         </template>
       </template>
+      <template v-else-if="kind === 'ntfy'">
+        Kein eigener Server: Die Geräte treffen sich über einen öffentlichen ntfy-Server. Alles geht
+        verschlüsselt hinaus, die Handys glauben nur, was dieser Rechner signiert hat. Setzt
+        Internet am Wettkampfort voraus – Aufbau siehe README, Abschnitt „ntfy".
+      </template>
       <template v-else>
         Setzt verlässliches Internet am Wettkampfort voraus. Welcher Anbieter dahintersteht,
         entscheidet allein die Adresse – Aufbau siehe <span class="mono">cloud/</span> (AWS) oder
         <span class="mono">cloudflare/</span>.
       </template>
     </p>
+
+    <template v-if="kind === 'ntfy'">
+      <label class="field">
+        ntfy-Server
+        <input v-model="ntfyServer" :placeholder="DEFAULT_NTFY_SERVER" autocomplete="off" />
+      </label>
+      <p v-if="!ntfyServerValid" class="hint warn">
+        Eine Adresse wie <span class="mono">https://ntfy.adminforge.de</span>.
+      </p>
+      <p v-else-if="ntfyShWarning" class="hint warn">
+        ntfy.sh nimmt ohne Konto nur 250 Nachrichten am Tag und IP an – zu wenig für einen
+        Wettkampftag. ntfy.adminforge.de erlaubt 17 280.
+      </p>
+
+      <div v-if="currentNtfyRoom" class="row small">
+        <span class="dim">Raum <span class="mono">{{ currentNtfyRoom }}</span></span>
+        <button v-if="!confirmNewRoom" @click="confirmNewRoom = true">Neuen Raum anlegen</button>
+        <template v-else>
+          <span class="warn">Alle Geräte müssen danach neu angemeldet werden.</span>
+          <button class="danger" :disabled="busy || !ntfyServerValid" @click="applyNtfy(true)">
+            Ja, neuer Raum
+          </button>
+          <button @click="confirmNewRoom = false">Abbrechen</button>
+        </template>
+      </div>
+      <p v-else class="hint">
+        Mit „Übernehmen“ legt dieser Rechner einen Raum an: ein zufälliges Thema und die
+        Schlüssel. Die Handys bekommen beides über den QR-Code unter „Gerät freischalten“.
+      </p>
+    </template>
 
     <template v-if="needsUrl">
       <label v-if="zeigeAuswahl" class="field">
@@ -216,7 +307,7 @@ const placeholder = computed(() =>
       <span v-if="errorText" class="small error">{{ errorText }}</span>
     </div>
 
-    <p v-if="needsUrl && !store.relayLeader.value" class="hint">
+    <p v-if="kind !== 'local' && !store.relayLeader.value" class="hint">
       Zum Relais verbindet immer nur <strong>ein</strong> Fenster dieses Browsers – das Relais kennt
       je Raum genau einen Host, ein zweites würde das erste hinauswerfen. Alle Fenster hier teilen
       sich denselben Stand, die Handys erreichen die Tafel also trotzdem. Wird das führende Fenster

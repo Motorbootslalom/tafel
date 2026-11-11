@@ -112,7 +112,7 @@ npm run build     # nach dist/, läuft auf GitHub Pages
 
 ### Mit Handys am Steg
 
-Dafür braucht es eine Verbindung zwischen den Geräten – drei stehen bereit:
+Dafür braucht es eine Verbindung zwischen den Geräten – vier Wege stehen bereit:
 
 - **[`server/`](server/)** – ein Mini-Programm (eine Datei, kein Installer) für
   den Bedienrechner. Es liefert die Anwendung im WLAN oder Handy-Hotspot aus und
@@ -122,8 +122,14 @@ Dafür braucht es eine Verbindung zwischen den Geräten – drei stehen bereit:
   DynamoDB), wenn vor Ort verlässlich Netz steht.
 - **[`cloudflare/`](cloudflare/)** – dasselbe als Worker mit Durable Object.
   Deutlich weniger bewegliche Teile als die AWS-Fassung und im kostenlosen Tarif.
+- **[ntfy](#ntfy-ohne-eigenen-server)** – ganz ohne eigenen Server, über einen
+  öffentlichen ntfy-Server und verschlüsselt. Nichts zu bauen, nichts zu
+  betreiben; die Seite kann weiter von GitHub Pages oder aus der
+  heruntergeladenen Datei kommen. Braucht Internet am Wettkampfort.
 
-Alle drei sind Umsetzungen derselben, kleinen Aufgabe; weitere Wege stehen unten.
+Die ersten drei sind Umsetzungen derselben, kleinen Relais-Aufgabe; bei ntfy
+übernimmt die Verschlüsselung in der Anwendung deren Regeln. Weitere Wege stehen
+unten.
 
 ## Andere Wege für die Verbindung
 
@@ -161,7 +167,7 @@ Zertifikat. Das ist der eigentliche Aufwand, nicht der Server.
 | `cloud/` (AWS) | nein | fertig | Centbeträge je Veranstaltung |
 | [Cloudflare Worker + Durable Object](cloudflare/) | nein | Worker um `relay.mjs` herum | im kostenlosen Tarif |
 | Tailscale / ZeroTier statt Relais | teilweise | VPN auf jedem Gerät | für kleine Netze kostenlos |
-| [ntfy](#ntfy-ohne-eigenen-server) (z. B. ntfy.adminforge.de) | nein | Transport + Verschlüsselung in der Anwendung, **kein Server** | kostenlos, Kontingent je IP |
+| [ntfy](#ntfy-ohne-eigenen-server) (z. B. ntfy.adminforge.de) | nein | fertig, **kein Server** | kostenlos, Kontingent je IP |
 | Ably / Pusher / Supabase Realtime | nein | Adapter + Rechte-Token | Freikontingente – siehe Warnung |
 
 **Den lokalen Server durchreichen** ist der unterschätzte Weg: Ein Cloudflare
@@ -206,7 +212,12 @@ bestehenden Relais war dafür nichts zu ändern, was als Test festgehalten ist.
 
 ### ntfy: ohne eigenen Server
 
-> **Stand:** Entwurf, die Umsetzung folgt.
+> **Umgesetzt und geprüft** (November 2026) gegen ntfy.adminforge.de, mit
+> Bedienrechner und Handy in zwei getrennten Browsern – einmal von der Webseite,
+> einmal aus der heruntergeladenen Datei (`file://`). Handy über Raum-Link und
+> Geräte-Code freigeschaltet in 0,4 s, Weiterschalten in beide Richtungen je
+> 0,2 s, danach Zustand auf beiden Seiten byte-gleich; Neuladen und Entzug
+> verhalten sich wie beim Relais.
 
 [ntfy](https://ntfy.sh) ist ein offener Benachrichtigungsdienst: Was an
 `https://<server>/<thema>` geschickt wird, erreicht alle, die dieses Thema
@@ -321,6 +332,42 @@ nicht.
 **Kein Offline-Betrieb.** ntfy ersetzt `cloud/` und `cloudflare/`, nicht
 `server/` am See.
 
+#### Einrichten
+
+In der Verwaltung unter **Geräte → Verbindung** „Internet (ntfy)“ wählen und
+**Übernehmen**. Der Rechner legt dabei einen Raum an (Thema und Schlüssel) und
+behält ihn; der Server ist vorbelegt. Danach unter **Gerät freischalten** einen
+Code ausgeben – das Handy scannt den QR-Code, oder es öffnet den angezeigten
+**Raum-Link** und tippt den Geräte-Code.
+
+„Neuen Raum anlegen“ erzeugt Thema und Schlüssel neu. Alle Geräte müssen danach
+neu angemeldet werden; sinnvoll etwa zwischen zwei Veranstaltungen.
+
+Die Schlüssel des Hosts liegen nur im Browser des Bedienrechners. Geht dessen
+Speicher verloren, braucht es einen neuen Raum. Mehrere Fenster dort teilen sich
+den Raum – wie beim Relais hält nur eines die Verbindung.
+
+Packen können Browser seit 2023 (Safari 16.4, Chrome 80, Firefox 113); ältere
+melden das beim Verbinden, statt still nichts zu empfangen.
+
+#### Wo es steht
+
+```
+src/transport/ntfy/codec.ts      Base64url, Packen, Fingerabdruck, steigende Zeitstempel
+src/transport/ntfy/patch.ts      Differenz zweier Zustände und ihr Nachziehen
+src/transport/ntfy/room.ts       Raum und Schlüssel, im localStorage
+src/transport/ntfy/wire.ts       Was über die Leitung geht: verschlüsseln, signieren, prüfen
+src/transport/ntfy/transport.ts  Der Transport: Abo, Schlange, Wiederholen, Lücken
+```
+
+Im Store hat sich genau eine Stelle geändert: Meldet sich ein Gerät mit einem
+Schlüssel, den der Host nicht als seinen kennt, entscheidet er wie bei einem
+unbekannten Gerät – nur mit gültigem Code. Die Tests in `transport.test.ts`
+laufen gegen einen nachgebauten ntfy-Server, der sich verhält wie der echte
+(nachgemessen); die Prüfungen gegen gefälschte, wiederholte und nach dem Entzug
+mitgelesene Nachrichten schlagen nachweislich an, wenn man die jeweilige
+Sicherung im Transport ausbaut.
+
 ### Vorsicht bei fertigen Pub/Sub-Diensten
 
 Ably, Pusher, Supabase Realtime oder ein MQTT-Broker sehen verlockend aus, weil
@@ -342,7 +389,7 @@ sind Signaturen in der Anwendung selbst; dann genügt ein beliebiger Kanal, sieh
 ```
 src/lib/         Fachlogik ohne Oberfläche (Verzahnung, Startliste, Zeiten, Pairing)
 src/state/       Reducer, Rechte, Store
-src/transport/   Wie Geräte miteinander sprechen (local · lan · cloud)
+src/transport/   Wie Geräte miteinander sprechen (local · lan · ntfy · cloud)
 src/views/       Die fünf Ansichten
 src/components/  Bausteine der Bedienoberfläche
 server/          Lokales Relais (Go, eine Datei)
@@ -367,7 +414,8 @@ Reihenfolge und damit die gemessenen Zeiten bleiben davon unberührt.
 
 **Rechte prüft immer der Host**, nie das Gerät und nie das Relais. Das Relais
 setzt nur eine einzige Regel durch: Wer nicht freigegeben ist, darf nur eine
-Anmeldung schicken.
+Anmeldung schicken. Bei ntfy gibt es kein Relais; dieselbe Regel setzt dort der
+Transport des Hosts durch, anhand der Schlüssel der Geräte.
 
 **Fenster reden immer direkt miteinander.** Tafel, Verwaltung und Steg auf
 demselben Rechner teilen sich den Browser-Speicher und tauschen Actions über

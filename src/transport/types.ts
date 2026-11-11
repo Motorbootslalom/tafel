@@ -8,8 +8,10 @@ import type { Envelope, Message } from './protocol'
  * - `lan`   – über das lokale Mini-Binary im WLAN/Hotspot am Wettkampfort
  * - `cloud` – über ein Relais im Internet, wenn die Geräte nicht im selben
  *             Netz hängen. An welchen Anbieter, entscheidet allein die Adresse.
+ * - `ntfy`  – über einen öffentlichen ntfy-Server, ganz ohne eigenes Relais.
+ *             Die Regeln des Relais ersetzt die Verschlüsselung (`ntfy/`).
  */
-export type TransportKind = 'local' | 'lan' | 'cloud'
+export type TransportKind = 'local' | 'lan' | 'ntfy' | 'cloud'
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'
 
@@ -30,5 +32,6 @@ export interface Transport {
 export const KIND_LABEL: Record<TransportKind, string> = {
   local: 'Dieser Rechner',
   lan: 'Lokales Netz',
-  cloud: 'Internet (Cloud)',
+  ntfy: 'Internet (ntfy)',
+  cloud: 'Internet (eigenes Relais)',
 }

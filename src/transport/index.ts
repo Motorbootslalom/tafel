@@ -1,19 +1,27 @@
 import { windowId } from '../lib/ids'
 import { LocalTransport } from './local'
 import { SocketTransport, type SocketOptions } from './socket'
+import { NtfyTransport } from './ntfy/transport'
 import type { Transport, TransportKind } from './types'
 
 export * from './types'
 export * from './protocol'
 export { LocalTransport } from './local'
 export { SocketTransport } from './socket'
+export { NtfyTransport } from './ntfy/transport'
 
 export interface TransportConfig {
   kind: TransportKind
-  /** Für `lan`/`cloud`: WebSocket-URL des Relais. */
+  /** Für `lan`/`cloud`: WebSocket-URL des Relais. Für `ntfy`: Adresse des Servers. */
   url?: string
+  /** Für `ntfy`: das Thema des Raums. */
   room?: string
   hostKey?: string
+  /**
+   * Nur `ntfy`: die öffentlichen Schlüssel des Hosts. Ein Gerät bekommt sie aus
+   * QR-Code oder Raum-Link; der Host trägt sie für eben diesen QR-Code mit.
+   */
+  hostPublic?: string
   isHost: boolean
 }
 
@@ -24,7 +32,8 @@ export function loadTransportConfig(): TransportConfig {
     const raw = localStorage.getItem(CONFIG_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as TransportConfig
-      if (parsed && (parsed.kind === 'local' || parsed.kind === 'lan' || parsed.kind === 'cloud')) {
+      const kinds: string[] = ['local', 'lan', 'ntfy', 'cloud']
+      if (parsed && kinds.includes(parsed.kind)) {
         return parsed
       }
     }
@@ -51,6 +60,15 @@ export function saveTransportConfig(config: TransportConfig): void {
  */
 export function createTransport(deviceId: string, config: TransportConfig): Transport {
   if (config.kind === 'local') return new LocalTransport(windowId())
+
+  if (config.kind === 'ntfy') {
+    return new NtfyTransport(deviceId, {
+      server: config.url ?? '',
+      topic: config.room ?? '',
+      hostPublic: config.hostPublic,
+      isHost: config.isHost,
+    })
+  }
 
   const options: SocketOptions = {
     url: config.url ?? '',
